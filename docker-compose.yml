@@ -1,0 +1,32 @@
+services:
+  backend:
+    build: ./backend
+    container_name: cometa-backend
+    ports:
+      - "3001:3001"
+    env_file:
+      - ./backend/.env
+    restart: unless-stopped
+    networks:
+      - cometa-net
+
+  frontend:
+    build: ./frontend
+    container_name: cometa-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - cometa-net
+
+networks:
+  cometa-net:
+    driver: bridge
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
