@@ -23,7 +23,6 @@ services:
 
 networks:
   cometa-net:
-    driver: bridge
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
