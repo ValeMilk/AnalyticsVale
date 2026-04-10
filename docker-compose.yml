@@ -23,9 +23,3 @@ services:
 
 networks:
   cometa-net:
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    restart: unless-stopped
-
-volumes:
-  pgdata:
