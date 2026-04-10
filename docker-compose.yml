@@ -14,7 +14,7 @@ services:
     build: ./frontend
     container_name: cometa-frontend
     ports:
-      - "80:80"
+      - "8082:80"
     depends_on:
       - backend
     restart: unless-stopped
