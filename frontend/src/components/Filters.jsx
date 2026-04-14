@@ -107,6 +107,26 @@ export default function Filters({ filters, onChange, produtos = [], lojas = [] }
 
   const update = (key, value) => onChange({ ...filters, [key]: value });
 
+  // Subcategorias únicas derivadas dos produtos
+  const subcategorias = [...new Set(produtos.map(p => p.subcategoria).filter(Boolean))].sort();
+
+  const eansDaSubcategoria = (sub) => produtos.filter(p => p.subcategoria === sub).map(p => p.ean);
+
+  const subcategoriasSelecionadas = subcategorias.filter(sub => {
+    const eans = eansDaSubcategoria(sub);
+    return eans.length > 0 && eans.every(e => (filters.eans || []).includes(e));
+  });
+
+  const toggleSubcategoria = (sub) => {
+    const eans = eansDaSubcategoria(sub);
+    const atual = filters.eans || [];
+    const jaSelec = eans.every(e => atual.includes(e));
+    const novo = jaSelec
+      ? atual.filter(e => !eans.includes(e))
+      : [...new Set([...atual, ...eans])];
+    update('eans', novo);
+  };
+
   const toggleEan = (ean) => {
     const atual = filters.eans || [];
     const novo = atual.includes(ean) ? atual.filter(e => e !== ean) : [...atual, ean];
@@ -162,6 +182,19 @@ export default function Filters({ filters, onChange, produtos = [], lojas = [] }
             </button>
           ))}
         </div>
+
+        {/* Subcategorias multi-select */}
+        <MultiSelectDropdown
+          label="Subcategorias"
+          items={subcategorias.map(s => ({ id: s, nome: s, count: eansDaSubcategoria(s).length }))}
+          selected={subcategoriasSelecionadas}
+          onToggle={toggleSubcategoria}
+          onClear={() => update('eans', [])}
+          getKey={(s) => s.id}
+          getLabel={(s) => s.nome}
+          getSubLabel={(s) => `${s.count} produto${s.count !== 1 ? 's' : ''}`}
+          placeholder="Buscar subcategoria..."
+        />
 
         {/* Produtos multi-select */}
         <MultiSelectDropdown

@@ -80,11 +80,18 @@ export async function analisarTodasAcoes(filtros = {}) {
   if (filtros.tipo) filter.tipo = filtros.tipo;
   if (filtros.vendor) filter.vendor = filtros.vendor;
 
-  const acoes = await AcaoComercial.find(filter).sort({ data_inicio: -1 }).limit(50);
+  const acoes = await AcaoComercial.find(filter).sort({ data_inicio: -1 }).limit(200);
 
   const resultados = await Promise.allSettled(
     acoes.map(acao => analisarEficacia(acao._id, filtros.comp_inicio, filtros.comp_fim))
   );
+
+  // Loga ações que falharam na análise para facilitar diagnóstico
+  resultados.forEach((r, i) => {
+    if (r.status === 'rejected') {
+      console.warn(`⚠️ Análise falhou para ação ${acoes[i]?._id} (${acoes[i]?.produto}): ${r.reason?.message}`);
+    }
+  });
 
   const dados = resultados
     .filter(r => r.status === 'fulfilled')

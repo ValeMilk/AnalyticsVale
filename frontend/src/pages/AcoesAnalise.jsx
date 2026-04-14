@@ -7,8 +7,16 @@ const fmt = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', curren
 const fmtPct = (v) => `${v > 0 ? '+' : ''}${Number(v).toFixed(1)}%`;
 const fmtData = (s) => {
   if (!s) return '';
-  const [y, m, d] = s.split('-');
+  const [y, m, d] = s.split('T')[0].split('-');
   return `${d}/${m}/${y}`;
+};
+
+const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const fmtDiaSemana = (s) => {
+  if (!s) return '';
+  const [y, m, d] = s.split('T')[0].split('-');
+  const date = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+  return DIAS_SEMANA[date.getUTCDay()];
 };
 
 const TIPOS = [
@@ -27,11 +35,11 @@ const tipoColor = {
 const tipoLabel = { encarte: 'Encarte', oferta_interna: 'Oferta Interna', rebaixa: 'Rebaixa' };
 
 function CelVariacao({ valor, isBase }) {
-  if (isBase) return <td className="px-4 py-2.5 text-center text-xs text-slate-300 italic">base</td>;
-  if (valor === null || valor === undefined) return <td className="px-4 py-2.5 text-center text-xs text-slate-300">—</td>;
+  if (isBase) return <td className="px-2 py-2 text-center text-xs text-slate-300 italic">base</td>;
+  if (valor === null || valor === undefined) return <td className="px-2 py-2 text-center text-xs text-slate-300">—</td>;
   const pos = valor >= 0;
   return (
-    <td className={`px-4 py-2.5 text-center text-xs font-bold ${pos ? 'text-green-600' : 'text-red-500'}`}>
+    <td className={`px-2 py-2 text-center text-xs font-bold ${pos ? 'text-green-600' : 'text-red-500'}`}>
       {valor > 0 ? '+' : ''}{Number(valor).toFixed(1)}%
     </td>
   );
@@ -73,15 +81,17 @@ function ProdutoGrupo({ grupo }) {
       </div>
 
       {/* Tabela de comparação horizontal */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
+      <div className="w-full">
+        <table className="w-full text-sm border-collapse table-fixed">
           <thead>
             <tr className="border-b-2 border-slate-200">
-              <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wide w-36 bg-slate-50/60">Métrica</th>
+              <th className="px-2 py-3 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wide w-28 bg-slate-50/60">Métrica</th>
               {acoes.map((item, i) => (
-                <th key={i} className={`px-4 py-3 text-center min-w-[150px] border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/60' : ''}`}>
+                <th key={i} className={`px-2 py-3 text-center border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/60' : ''}`}>
                   <div className="text-xs font-bold text-slate-700">
-                    {fmtData(item.periodo_acao.inicio)} → {fmtData(item.periodo_acao.fim)}
+                    {fmtData(item.periodo_acao.inicio)} <span className="text-slate-400 font-normal">({fmtDiaSemana(item.periodo_acao.inicio)})</span>
+                    {' → '}
+                    {fmtData(item.periodo_acao.fim)} <span className="text-slate-400 font-normal">({fmtDiaSemana(item.periodo_acao.fim)})</span>
                   </div>
                   {i === melhorIdx && acoes.length > 1 && (
                     <div className="text-[10px] text-green-600 font-semibold mt-1">★ Base (melhor resultado)</div>
@@ -93,9 +103,9 @@ function ProdutoGrupo({ grupo }) {
           <tbody>
             {/* Preço */}
             <tr className="border-b border-slate-100 bg-slate-50/40">
-              <td className="px-4 py-2.5 text-xs text-slate-400 font-medium bg-slate-50/60">Preço ação</td>
+              <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60">Preço ação</td>
               {acoes.map((item, i) => (
-                <td key={i} className={`px-4 py-2.5 text-center text-xs text-slate-600 border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/40' : ''}`}>
+                <td key={i} className={`px-2 py-2 text-center text-xs text-slate-600 border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/40' : ''}`}>
                   {fmt(item.acao.preco_acao)}
                   {item.acao.preco_normal && <span className="ml-1 text-slate-300 line-through">{fmt(item.acao.preco_normal)}</span>}
                 </td>
@@ -103,9 +113,9 @@ function ProdutoGrupo({ grupo }) {
             </tr>
             {/* Quantidade */}
             <tr className="border-b border-slate-100">
-              <td className="px-4 py-2.5 text-xs text-slate-400 font-medium bg-slate-50/60">Qtd vendida</td>
+              <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60">Qtd vendida</td>
               {acoes.map((item, i) => (
-                <td key={i} className={`px-4 py-2.5 text-center border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/40' : ''}`}>
+                <td key={i} className={`px-2 py-2 text-center border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/40' : ''}`}>
                   <div className="text-sm font-bold text-slate-900">{Number(item.periodo_acao.qtd).toLocaleString('pt-BR')}</div>
                 </td>
               ))}
@@ -113,7 +123,7 @@ function ProdutoGrupo({ grupo }) {
             {/* Var Qtd vs base */}
             {acoes.length > 1 && (
               <tr className="border-b border-slate-100 bg-slate-50/40">
-                <td className="px-4 py-2 text-xs text-slate-400 font-medium bg-slate-50/60 pl-6">↳ vs base</td>
+                <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60 pl-4">↳ vs base</td>
                 {acoes.map((item, i) => (
                   <CelVariacao key={i} isBase={i === melhorIdx} valor={varVsBase(item.periodo_acao.qtd, base.periodo_acao.qtd)} />
                 ))}
@@ -121,9 +131,9 @@ function ProdutoGrupo({ grupo }) {
             )}
             {/* Faturamento */}
             <tr className="border-b border-slate-100">
-              <td className="px-4 py-2.5 text-xs text-slate-400 font-medium bg-slate-50/60">Faturamento</td>
+              <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60">Faturamento</td>
               {acoes.map((item, i) => (
-                <td key={i} className={`px-4 py-2.5 text-center border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/40' : ''}`}>
+                <td key={i} className={`px-2 py-2 text-center border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/40' : ''}`}>
                   <div className="text-sm font-bold text-slate-900">{fmt(item.periodo_acao.venda)}</div>
                 </td>
               ))}
@@ -131,7 +141,7 @@ function ProdutoGrupo({ grupo }) {
             {/* Var Fat vs base */}
             {acoes.length > 1 && (
               <tr className="border-b border-slate-100 bg-slate-50/40">
-                <td className="px-4 py-2 text-xs text-slate-400 font-medium bg-slate-50/60 pl-6">↳ vs base</td>
+                <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60 pl-4">↳ vs base</td>
                 {acoes.map((item, i) => (
                   <CelVariacao key={i} isBase={i === melhorIdx} valor={varVsBase(item.periodo_acao.venda, base.periodo_acao.venda)} />
                 ))}
@@ -139,9 +149,9 @@ function ProdutoGrupo({ grupo }) {
             )}
             {/* Sell In */}
             <tr className="border-b border-slate-100">
-              <td className="px-4 py-2.5 text-xs text-slate-400 font-medium bg-slate-50/60">Sell In</td>
+              <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60">Sell In</td>
               {acoes.map((item, i) => (
-                <td key={i} className={`px-4 py-2.5 text-center border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/40' : ''}`}>
+                <td key={i} className={`px-2 py-2 text-center border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/40' : ''}`}>
                   <div className="text-sm font-bold text-slate-900">{fmt(item.periodo_acao.margem)}</div>
                 </td>
               ))}
@@ -149,7 +159,7 @@ function ProdutoGrupo({ grupo }) {
             {/* Var Sell In vs base */}
             {acoes.length > 1 && (
               <tr className="border-b border-slate-100 bg-slate-50/40">
-                <td className="px-4 py-2 text-xs text-slate-400 font-medium bg-slate-50/60 pl-6">↳ vs base</td>
+                <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60 pl-4">↳ vs base</td>
                 {acoes.map((item, i) => (
                   <CelVariacao key={i} isBase={i === melhorIdx} valor={varVsBase(item.periodo_acao.margem, base.periodo_acao.margem)} />
                 ))}
@@ -157,11 +167,11 @@ function ProdutoGrupo({ grupo }) {
             )}
             {/* Resultado */}
             <tr>
-              <td className="px-4 py-3 text-xs text-slate-400 font-medium bg-slate-50/60">Resultado</td>
+              <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60">Resultado</td>
               {acoes.map((item, i) => {
                 const eEficaz = acoes.length > 1 ? i === melhorIdx : item.eficaz;
                 return (
-                  <td key={i} className={`px-4 py-3 text-center border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/40' : ''}`}>
+                  <td key={i} className={`px-2 py-2 text-center border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/40' : ''}`}>
                     <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${eEficaz ? 'bg-green-500/10 text-green-600 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
                       {eEficaz ? '✓ Eficaz' : '✗ Ineficaz'}
                     </span>

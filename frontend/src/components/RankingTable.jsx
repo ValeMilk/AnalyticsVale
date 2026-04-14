@@ -30,7 +30,7 @@ export default function RankingTable({ data = [], limit = 10 }) {
                 </span>
               </td>
               <td className="py-3 pr-4">
-                <p className="font-medium text-slate-900 truncate max-w-[200px]">{item.produto}</p>
+                <p className="font-medium text-slate-900">{item.produto}</p>
                 <p className="text-xs text-slate-400">{item.ean}</p>
               </td>
               <td className="py-3 pr-4 text-right text-slate-600">{Number(item.qtd_total).toLocaleString('pt-BR')}</td>

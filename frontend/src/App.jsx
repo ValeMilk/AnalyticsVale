@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
@@ -7,10 +8,11 @@ import Acoes from './pages/Acoes';
 import AcoesAnalise from './pages/AcoesAnalise';
 
 export default function App() {
+  const [collapsed, setCollapsed] = useState(false);
   return (
     <div className="flex min-h-screen bg-cometa-bg">
-      <Sidebar />
-      <main className="ml-64 flex-1 p-8">
+      <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
+      <main className={`${collapsed ? 'ml-16' : 'ml-64'} flex-1 p-8 transition-all duration-300`}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/vendas" element={<Vendas />} />
