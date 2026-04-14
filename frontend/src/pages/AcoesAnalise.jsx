@@ -93,6 +93,9 @@ function ProdutoGrupo({ grupo }) {
                     {' → '}
                     {fmtData(item.periodo_acao.fim)} <span className="text-slate-400 font-normal">({fmtDiaSemana(item.periodo_acao.fim)})</span>
                   </div>
+                  <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${tipoColor[item.acao.tipo] || tipoColor.encarte}`}>
+                    {tipoLabel[item.acao.tipo] || item.acao.tipo}
+                  </span>
                   {i === melhorIdx && acoes.length > 1 && (
                     <div className="text-[10px] text-green-600 font-semibold mt-1">★ Base (melhor resultado)</div>
                   )}
