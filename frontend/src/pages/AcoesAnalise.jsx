@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { TrendingUp, TrendingDown, Minus, BarChart3, Calendar, Search } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, BarChart3, Calendar } from 'lucide-react';
 import api from '../api/client';
 import LoadingSpinner from '../components/LoadingSpinner';
 
@@ -196,6 +196,14 @@ export default function AcoesAnalise() {
   const [compInicio, setCompInicio] = useState('');
   const [compFim, setCompFim] = useState('');
   const [buscaProduto, setBuscaProduto] = useState('');
+  const [produtos, setProdutos] = useState([]);
+  const [subcatSelecionada, setSubcatSelecionada] = useState('');
+  const [eansSelecionados, setEansSelecionados] = useState([]);
+
+
+  useEffect(() => {
+    api.get('/produtos').then(r => setProdutos(r.data.data || [])).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const fetch = async () => {
@@ -217,12 +225,25 @@ export default function AcoesAnalise() {
     fetch();
   }, [filtroTipo, compInicio, compFim]);
 
+  const subcategorias = useMemo(() => [...new Set(produtos.map(p => p.subcategoria).filter(Boolean))].sort(), [produtos]);
+
+  const produtosDaSubcat = useMemo(() =>
+    subcatSelecionada ? produtos.filter(p => p.subcategoria === subcatSelecionada) : [],
+    [produtos, subcatSelecionada]);
+
+  // EANs ativos para filtro: produto específico > subcategoria > todos
+  const eansAtivos = useMemo(() => {
+    if (eansSelecionados.length > 0) return eansSelecionados;
+    if (subcatSelecionada) return produtosDaSubcat.map(p => p.ean?.replace(/,+$/, '')).filter(Boolean);
+    return [];
+  }, [eansSelecionados, subcatSelecionada, produtosDaSubcat]);
+
   const analiseFiltradas = analises.filter(a => {
-    if (!buscaProduto) return true;
-    const termo = buscaProduto.toLowerCase();
-    return a.acao.produto?.toLowerCase().includes(termo) ||
-      a.acao.ean?.includes(buscaProduto) ||
-      a.acao.cod_interno?.toString().includes(buscaProduto);
+    if (eansAtivos.length > 0) {
+      const eanNorm = a.acao.ean?.replace(/,+$/, '');
+      if (!eansAtivos.includes(eanNorm)) return false;
+    }
+    return true;
   });
 
   // Agrupa por produto (chave = ean normalizado ou nome do produto)
@@ -286,15 +307,28 @@ export default function AcoesAnalise() {
       {/* Filtros */}
       <div className="bg-white rounded-xl border border-slate-200 p-5 mb-6 shadow-sm">
         <div className="flex flex-wrap items-end gap-4">
-          {/* Busca Produto */}
+          {/* Subcategoria */}
+          <div>
+            <label className="block text-xs text-slate-500 mb-1.5">Subcategoria</label>
+            <select value={subcatSelecionada} onChange={e => { setSubcatSelecionada(e.target.value); setEansSelecionados([]); }}
+              className="bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-slate-900 text-xs focus:border-royal focus:outline-none w-48">
+              <option value="">Todas</option>
+              {subcategorias.map(sub => <option key={sub} value={sub}>{sub}</option>)}
+            </select>
+          </div>
+
+          {/* Produto (filtrado por subcategoria) */}
           <div>
             <label className="block text-xs text-slate-500 mb-1.5">Produto</label>
-            <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input value={buscaProduto} onChange={(e) => setBuscaProduto(e.target.value)}
-                placeholder="Buscar por nome ou código..."
-                className="bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-1.5 text-slate-900 text-xs focus:border-royal focus:outline-none w-56" />
-            </div>
+            <select
+              value={eansSelecionados[0] || ''}
+              onChange={e => setEansSelecionados(e.target.value ? [e.target.value] : [])}
+              className="bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-slate-900 text-xs focus:border-royal focus:outline-none w-56">
+              <option value="">Todos</option>
+              {(subcatSelecionada ? produtosDaSubcat : produtos).map(p => (
+                <option key={p.ean} value={p.ean?.replace(/,+$/, '')}>{p.produto}</option>
+              ))}
+            </select>
           </div>
 
           {/* Tipo */}
