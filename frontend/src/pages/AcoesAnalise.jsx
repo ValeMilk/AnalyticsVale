@@ -54,9 +54,9 @@ function ProdutoGrupo({ grupo }) {
   const { produto, ean, cod_interno, vendor, acoes } = grupo;
   const tiposBadge = [...new Set(acoes.map(a => a.acao.tipo))];
 
-  // melhor ação = maior faturamento durante = base de comparação
+  // melhor ação = maior faturamento/dia = base de comparação (normaliza duração diferente)
   const melhorIdx = acoes.reduce((best, item, i) =>
-    Number(item.periodo_acao.venda) > Number(acoes[best].periodo_acao.venda) ? i : best, 0);
+    Number(item.periodo_acao.venda_dia) > Number(acoes[best].periodo_acao.venda_dia) ? i : best, 0);
   const base = acoes[melhorIdx];
 
   return (
@@ -97,7 +97,7 @@ function ProdutoGrupo({ grupo }) {
                     {tipoLabel[item.acao.tipo] || item.acao.tipo}
                   </span>
                   {i === melhorIdx && acoes.length > 1 && (
-                    <div className="text-[10px] text-green-600 font-semibold mt-1">★ Base (melhor resultado)</div>
+                    <div className="text-[10px] text-green-600 font-semibold mt-1">★ Base (melhor fat/dia)</div>
                   )}
                 </th>
               ))}
@@ -116,10 +116,14 @@ function ProdutoGrupo({ grupo }) {
             </tr>
             {/* Quantidade */}
             <tr className="border-b border-slate-100">
-              <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60">Qtd vendida</td>
+              <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60">
+                Qtd/dia
+                <div className="text-[10px] text-slate-300 font-normal">total</div>
+              </td>
               {acoes.map((item, i) => (
                 <td key={i} className={`px-2 py-2 text-center border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/40' : ''}`}>
-                  <div className="text-sm font-bold text-slate-900">{Number(item.periodo_acao.qtd).toLocaleString('pt-BR')}</div>
+                  <div className="text-sm font-bold text-slate-900">{Number(item.periodo_acao.qtd_dia).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</div>
+                  <div className="text-[10px] text-slate-400">{Number(item.periodo_acao.qtd).toLocaleString('pt-BR')} em {item.periodo_acao.dias}d</div>
                 </td>
               ))}
             </tr>
@@ -128,16 +132,20 @@ function ProdutoGrupo({ grupo }) {
               <tr className="border-b border-slate-100 bg-slate-50/40">
                 <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60 pl-4">↳ vs base</td>
                 {acoes.map((item, i) => (
-                  <CelVariacao key={i} isBase={i === melhorIdx} valor={varVsBase(item.periodo_acao.qtd, base.periodo_acao.qtd)} />
+                  <CelVariacao key={i} isBase={i === melhorIdx} valor={varVsBase(item.periodo_acao.qtd_dia, base.periodo_acao.qtd_dia)} />
                 ))}
               </tr>
             )}
             {/* Faturamento */}
             <tr className="border-b border-slate-100">
-              <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60">Faturamento</td>
+              <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60">
+                Fat/dia
+                <div className="text-[10px] text-slate-300 font-normal">total</div>
+              </td>
               {acoes.map((item, i) => (
                 <td key={i} className={`px-2 py-2 text-center border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/40' : ''}`}>
-                  <div className="text-sm font-bold text-slate-900">{fmt(item.periodo_acao.venda)}</div>
+                  <div className="text-sm font-bold text-slate-900">{fmt(item.periodo_acao.venda_dia)}</div>
+                  <div className="text-[10px] text-slate-400">{fmt(item.periodo_acao.venda)} total</div>
                 </td>
               ))}
             </tr>
@@ -146,16 +154,20 @@ function ProdutoGrupo({ grupo }) {
               <tr className="border-b border-slate-100 bg-slate-50/40">
                 <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60 pl-4">↳ vs base</td>
                 {acoes.map((item, i) => (
-                  <CelVariacao key={i} isBase={i === melhorIdx} valor={varVsBase(item.periodo_acao.venda, base.periodo_acao.venda)} />
+                  <CelVariacao key={i} isBase={i === melhorIdx} valor={varVsBase(item.periodo_acao.venda_dia, base.periodo_acao.venda_dia)} />
                 ))}
               </tr>
             )}
             {/* Sell In */}
             <tr className="border-b border-slate-100">
-              <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60">Sell In</td>
+              <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60">
+                Sell In/dia
+                <div className="text-[10px] text-slate-300 font-normal">total</div>
+              </td>
               {acoes.map((item, i) => (
                 <td key={i} className={`px-2 py-2 text-center border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/40' : ''}`}>
-                  <div className="text-sm font-bold text-slate-900">{fmt(item.periodo_acao.margem)}</div>
+                  <div className="text-sm font-bold text-slate-900">{fmt(item.periodo_acao.margem_dia)}</div>
+                  <div className="text-[10px] text-slate-400">{fmt(item.periodo_acao.margem)} total</div>
                 </td>
               ))}
             </tr>
@@ -164,7 +176,7 @@ function ProdutoGrupo({ grupo }) {
               <tr className="border-b border-slate-100 bg-slate-50/40">
                 <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60 pl-4">↳ vs base</td>
                 {acoes.map((item, i) => (
-                  <CelVariacao key={i} isBase={i === melhorIdx} valor={varVsBase(item.periodo_acao.margem, base.periodo_acao.margem)} />
+                  <CelVariacao key={i} isBase={i === melhorIdx} valor={varVsBase(item.periodo_acao.margem_dia, base.periodo_acao.margem_dia)} />
                 ))}
               </tr>
             )}

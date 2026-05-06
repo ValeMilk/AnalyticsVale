@@ -47,7 +47,7 @@ async function _calcularAnalise(acao, compInicio = null, compFim = null) {
     queryVendasPeriodo(tables, identifier, idField, inicioAnterior, fimAnterior),
   ]);
 
-  const variacao = calcularVariacao(vendasAnterior, vendasAcao);
+  const variacao = calcularVariacao(vendasAnterior, vendasAcao, diasComp, duracaoDias);
 
   return {
     acao: {
@@ -67,15 +67,21 @@ async function _calcularAnalise(acao, compInicio = null, compFim = null) {
       fim: fim.toISOString().slice(0, 10),
       dias: duracaoDias,
       ...vendasAcao,
+      qtd_dia: duracaoDias > 0 ? Number((vendasAcao.qtd / duracaoDias).toFixed(2)) : 0,
+      venda_dia: duracaoDias > 0 ? Number((vendasAcao.venda / duracaoDias).toFixed(2)) : 0,
+      margem_dia: duracaoDias > 0 ? Number((vendasAcao.margem / duracaoDias).toFixed(2)) : 0,
     },
     periodo_anterior: {
       inicio: inicioAnterior.toISOString().slice(0, 10),
       fim: fimAnterior.toISOString().slice(0, 10),
       dias: diasComp,
       ...vendasAnterior,
+      qtd_dia: diasComp > 0 ? Number((vendasAnterior.qtd / diasComp).toFixed(2)) : 0,
+      venda_dia: diasComp > 0 ? Number((vendasAnterior.venda / diasComp).toFixed(2)) : 0,
+      margem_dia: diasComp > 0 ? Number((vendasAnterior.margem / diasComp).toFixed(2)) : 0,
     },
     variacao,
-    eficaz: variacao.qtd_percent > 0 && variacao.venda_percent > 0,
+    eficaz: variacao.qtd_dia_percent > 0 && variacao.venda_dia_percent > 0,
   };
 }
 
@@ -147,7 +153,7 @@ export async function analisarTodasAcoes(filtros = {}) {
     items.forEach((item, i) => {
       const vendasAcao = vendasDados[`a${i}`] || { qtd: 0, venda: 0, margem: 0, margem_percent: 0 };
       const vendasAnterior = vendasDados[`c${i}`] || { qtd: 0, venda: 0, margem: 0, margem_percent: 0 };
-      const variacao = calcularVariacao(vendasAnterior, vendasAcao);
+      const variacao = calcularVariacao(vendasAnterior, vendasAcao, item.diasComp, item.duracaoDias);
       todos.push({
         acao: {
           _id: item.acao._id, tipo: item.acao.tipo, produto: item.acao.produto,
@@ -155,10 +161,20 @@ export async function analisarTodasAcoes(filtros = {}) {
           preco_acao: item.acao.preco_acao, preco_normal: item.acao.preco_normal,
           data_inicio: item.acao.data_inicio, data_fim: item.acao.data_fim, vendor: item.acao.vendor,
         },
-        periodo_acao: { inicio: item.inicio.toISOString().slice(0, 10), fim: item.fim.toISOString().slice(0, 10), dias: item.duracaoDias, ...vendasAcao },
-        periodo_anterior: { inicio: item.inicioAnterior.toISOString().slice(0, 10), fim: item.fimAnterior.toISOString().slice(0, 10), dias: item.diasComp, ...vendasAnterior },
+        periodo_acao: {
+          inicio: item.inicio.toISOString().slice(0, 10), fim: item.fim.toISOString().slice(0, 10), dias: item.duracaoDias, ...vendasAcao,
+          qtd_dia: item.duracaoDias > 0 ? Number((vendasAcao.qtd / item.duracaoDias).toFixed(2)) : 0,
+          venda_dia: item.duracaoDias > 0 ? Number((vendasAcao.venda / item.duracaoDias).toFixed(2)) : 0,
+          margem_dia: item.duracaoDias > 0 ? Number((vendasAcao.margem / item.duracaoDias).toFixed(2)) : 0,
+        },
+        periodo_anterior: {
+          inicio: item.inicioAnterior.toISOString().slice(0, 10), fim: item.fimAnterior.toISOString().slice(0, 10), dias: item.diasComp, ...vendasAnterior,
+          qtd_dia: item.diasComp > 0 ? Number((vendasAnterior.qtd / item.diasComp).toFixed(2)) : 0,
+          venda_dia: item.diasComp > 0 ? Number((vendasAnterior.venda / item.diasComp).toFixed(2)) : 0,
+          margem_dia: item.diasComp > 0 ? Number((vendasAnterior.margem / item.diasComp).toFixed(2)) : 0,
+        },
         variacao,
-        eficaz: variacao.qtd_percent > 0 && variacao.venda_percent > 0,
+        eficaz: variacao.qtd_dia_percent > 0 && variacao.venda_dia_percent > 0,
       });
     });
   });
@@ -248,18 +264,30 @@ async function queryVendasLote(tables, identifier, idField, periodos) {
   return result;
 }
 
-function calcularVariacao(anterior, atual) {
+function calcularVariacao(anterior, atual, diasAnterior, diasAtual) {
   const pct = (novo, velho) => {
     if (velho === 0) return novo > 0 ? 100 : 0;
     return ((novo - velho) / velho) * 100;
   };
 
+  const qtdDiaAtual = diasAtual > 0 ? atual.qtd / diasAtual : 0;
+  const qtdDiaAnterior = diasAnterior > 0 ? anterior.qtd / diasAnterior : 0;
+  const vendaDiaAtual = diasAtual > 0 ? atual.venda / diasAtual : 0;
+  const vendaDiaAnterior = diasAnterior > 0 ? anterior.venda / diasAnterior : 0;
+  const margemDiaAtual = diasAtual > 0 ? atual.margem / diasAtual : 0;
+  const margemDiaAnterior = diasAnterior > 0 ? anterior.margem / diasAnterior : 0;
+
   return {
+    // totais absolutos
     qtd_diff: atual.qtd - anterior.qtd,
     qtd_percent: Number(pct(atual.qtd, anterior.qtd).toFixed(2)),
     venda_diff: Number((atual.venda - anterior.venda).toFixed(2)),
     venda_percent: Number(pct(atual.venda, anterior.venda).toFixed(2)),
     margem_diff: Number((atual.margem - anterior.margem).toFixed(2)),
     margem_percent: Number(pct(atual.margem, anterior.margem).toFixed(2)),
+    // normalizados por dia (principal métrica de comparação)
+    qtd_dia_percent: Number(pct(qtdDiaAtual, qtdDiaAnterior).toFixed(2)),
+    venda_dia_percent: Number(pct(vendaDiaAtual, vendaDiaAnterior).toFixed(2)),
+    margem_dia_percent: Number(pct(margemDiaAtual, margemDiaAnterior).toFixed(2)),
   };
 }
