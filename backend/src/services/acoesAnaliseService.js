@@ -159,9 +159,10 @@ export async function analisarTodasAcoes(filtros = {}) {
         { key: `c${i}`, inicio: item.inicioAnterior.toISOString().slice(0, 10), fim: item.fimAnterior.toISOString().slice(0, 10) },
       ]);
       const dados = await queryVendasLote(tables, grupo.identifier, grupo.idField, periodos);
+      console.log(`✅ Grupo ${key}: ${grupo.items.length} ações, keys=${Object.keys(dados).join(',')}, a0_qtd=${dados['a0']?.qtd ?? 'N/A'}`);
       vendasPorGrupo.set(key, { dados, items: grupo.items });
     } catch (e) {
-      console.warn(`⚠️ Erro no grupo ${key}: ${e.message}`);
+      console.warn(`⚠️ Erro no grupo ${key}: ${e.message}`, e.stack?.split('\n')[1]);
     }
   }));
 
