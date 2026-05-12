@@ -576,10 +576,10 @@ export default function Encartes() {
         </div>
       )}
 
-      {/* Botão flutuante mobile */}
+      {/* Botão flutuante mobile — acima da bottom nav */}
       <button
         onClick={() => abrirForm()}
-        className="sm:hidden fixed bottom-6 right-6 w-14 h-14 bg-royal hover:bg-royal/90 text-white rounded-full shadow-xl flex items-center justify-center transition-colors z-40"
+        className="sm:hidden fixed bottom-20 right-5 w-14 h-14 bg-royal hover:bg-royal/90 text-white rounded-full shadow-xl flex items-center justify-center transition-colors z-40"
       >
         <Plus size={24} />
       </button>
