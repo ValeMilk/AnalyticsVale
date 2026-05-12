@@ -4,11 +4,22 @@ import { getVendasConsolidadas } from '../services/vendasService.js';
 const router = Router();
 
 function parseFilters(query) {
+  // eans pode vir como eans[]=x&eans[]=y ou eans=x,y
+  let eans = [];
+  if (query['eans[]']) eans = Array.isArray(query['eans[]']) ? query['eans[]'] : [query['eans[]']];
+  else if (query.eans) eans = Array.isArray(query.eans) ? query.eans : query.eans.split(',').filter(Boolean);
+
+  let lojaIds = [];
+  if (query['loja_ids[]']) lojaIds = Array.isArray(query['loja_ids[]']) ? query['loja_ids[]'] : [query['loja_ids[]']];
+  else if (query.loja_ids) lojaIds = Array.isArray(query.loja_ids) ? query.loja_ids : query.loja_ids.split(',').filter(Boolean);
+
   return {
     dataInicio: query.data_inicio || null,
     dataFim: query.data_fim || null,
     lojaId: query.loja_id || null,
+    lojaIds: lojaIds.length > 0 ? lojaIds : null,
     ean: query.ean || null,
+    eans: eans.length > 0 ? eans : null,
     vendor: query.vendor || 'ambos',
   };
 }

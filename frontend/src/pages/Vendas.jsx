@@ -39,8 +39,13 @@ export default function Vendas() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams(filters).toString();
-      const { data } = await api.get(`/vendas?${params}`);
+      const params = new URLSearchParams();
+      if (filters.data_inicio) params.set('data_inicio', filters.data_inicio);
+      if (filters.data_fim) params.set('data_fim', filters.data_fim);
+      if (filters.vendor) params.set('vendor', filters.vendor);
+      if (filters.eans?.length) filters.eans.forEach(e => params.append('eans[]', e));
+      if (filters.loja_ids?.length) filters.loja_ids.forEach(l => params.append('loja_ids[]', l));
+      const { data } = await api.get(`/vendas?${params.toString()}`);
       setVendas(data.data || []);
     } catch (err) {
       console.error('Erro ao carregar vendas:', err);
