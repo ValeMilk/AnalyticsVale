@@ -30,6 +30,11 @@ export default function Vendas() {
   const [search, setSearch] = useState('');
   const [acoes, setAcoes] = useState([]);
   const [acoesLoaded, setAcoesLoaded] = useState(false);
+  const [produtos, setProdutos] = useState([]);
+
+  useEffect(() => {
+    api.get('/produtos').then(r => setProdutos(r.data.data || [])).catch(() => {});
+  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -83,7 +88,7 @@ export default function Vendas() {
       </div>
 
       {/* Filtros */}
-      <Filters filters={filters} onChange={setFilters} />
+      <Filters filters={filters} onChange={setFilters} produtos={produtos} />
 
       <div className="flex flex-wrap gap-4">
         <div className="relative flex-1 min-w-[250px]">
