@@ -121,6 +121,23 @@ export async function analisarTodasAcoes(filtros = {}) {
     return { acao, inicio, fim, inicioAnterior, fimAnterior, duracaoDias, diasComp, identifier, idField };
   });
 
+  // Normalizar: se uma ação não tem cod_interno mas outra com mesmo EAN tem,
+  // usar esse cod_interno para que fiquem no mesmo grupo e a query seja por código
+  const eanToCodInterno = {};
+  acoesInfo.forEach(info => {
+    const eanNorm = (info.acao.ean || '').replace(/,+$/, '');
+    if (info.acao.cod_interno) eanToCodInterno[eanNorm] = info.acao.cod_interno;
+  });
+  acoesInfo.forEach(info => {
+    if (!info.acao.cod_interno) {
+      const eanNorm = (info.acao.ean || '').replace(/,+$/, '');
+      if (eanToCodInterno[eanNorm]) {
+        info.identifier = eanToCodInterno[eanNorm];
+        info.idField = 'cod_interno';
+      }
+    }
+  });
+
   // Agrupar por produto único → 1 query por produto (em vez de 2 por ação)
   const grupos = new Map();
   acoesInfo.forEach(info => {
