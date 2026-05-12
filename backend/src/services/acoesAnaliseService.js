@@ -335,3 +335,66 @@ function calcularVariacao(anterior, atual, diasAnterior, diasAtual) {
     margem_dia_percent: Number(pct(margemDiaAtual, margemDiaAnterior).toFixed(2)),
   };
 }
+
+/**
+ * Debug: retorna os grupos de produtos e identificadores para diagnóstico
+ */
+export async function debugGrupos() {
+  const acoes = await AcaoComercial.find({}).sort({ data_inicio: -1 }).limit(200);
+
+  const acoesInfo = acoes.map(acao => {
+    const inicio = acao.data_inicio;
+    const fim = acao.data_fim;
+    const duracaoDias = Math.ceil((fim - inicio) / (1000 * 60 * 60 * 24)) + 1;
+    const identifier = acao.cod_interno || acao.ean;
+    const idField = acao.cod_interno ? 'cod_interno' : 'ean';
+    return {
+      _id: acao._id,
+      produto: acao.produto,
+      cod_interno: acao.cod_interno,
+      ean: acao.ean,
+      vendor: acao.vendor,
+      data_inicio: inicio?.toISOString().slice(0, 10),
+      data_fim: fim?.toISOString().slice(0, 10),
+      duracaoDias,
+      identifier,
+      idField,
+    };
+  });
+
+  // Mesma normalização do analisarTodasAcoes
+  const eanToCodInterno = {};
+  acoesInfo.forEach(info => {
+    const eanNorm = (info.ean || '').replace(/,+$/, '');
+    if (info.cod_interno) eanToCodInterno[eanNorm] = info.cod_interno;
+  });
+  acoesInfo.forEach(info => {
+    if (!info.cod_interno) {
+      const eanNorm = (info.ean || '').replace(/,+$/, '');
+      if (eanToCodInterno[eanNorm]) {
+        info.identifier_normalizado = eanToCodInterno[eanNorm];
+        info.idField_normalizado = 'cod_interno';
+      }
+    }
+  });
+
+  const grupos = {};
+  acoesInfo.forEach(info => {
+    const effIdentifier = info.identifier_normalizado || info.identifier;
+    const effIdField = info.idField_normalizado || info.idField;
+    const key = `${effIdentifier}||${effIdField}||${info.vendor}`;
+    if (!grupos[key]) grupos[key] = { identifier: effIdentifier, idField: effIdField, vendor: info.vendor, acoes: [] };
+    grupos[key].acoes.push({
+      produto: info.produto,
+      cod_interno: info.cod_interno,
+      ean: info.ean,
+      data_inicio: info.data_inicio,
+      data_fim: info.data_fim,
+      identifier_original: info.identifier,
+      identifier_final: effIdentifier,
+      foi_normalizado: !!info.identifier_normalizado,
+    });
+  });
+
+  return Object.entries(grupos).map(([key, g]) => ({ key, ...g }));
+}

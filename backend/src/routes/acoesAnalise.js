@@ -1,7 +1,17 @@
 import { Router } from 'express';
-import { analisarEficacia, analisarTodasAcoes } from '../services/acoesAnaliseService.js';
+import { analisarEficacia, analisarTodasAcoes, debugGrupos } from '../services/acoesAnaliseService.js';
 
 const router = Router();
+
+// Debug: ver grupos e identificadores (remover após diagnóstico)
+router.get('/debug/grupos', async (req, res) => {
+  try {
+    const info = await debugGrupos();
+    res.json({ status: 'success', data: info });
+  } catch (err) {
+    res.status(500).json({ status: 'error', error: err.message });
+  }
+});
 
 // Análise de todas as ações
 router.get('/', async (req, res) => {
