@@ -10,6 +10,7 @@ import acoesRoutes from './routes/acoes.js';
 import acoesAnaliseRoutes from './routes/acoesAnalise.js';
 import produtosRoutes from './routes/produtos.js';
 import lojasRoutes from './routes/lojas.js';
+import encartesRoutes from './routes/encartes.js';
 
 const app = express();
 
@@ -23,6 +24,7 @@ app.use('/api/acoes', acoesRoutes);
 app.use('/api/acoes-analise', acoesAnaliseRoutes);
 app.use('/api/produtos', produtosRoutes);
 app.use('/api/lojas', lojasRoutes);
+app.use('/api/encartes', encartesRoutes);
 
 app.get('/api/health', async (_req, res) => {
   const dbOk = await testConnection();

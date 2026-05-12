@@ -6,6 +6,7 @@ import Vendas from './pages/Vendas';
 import Alertas from './pages/Alertas';
 import Acoes from './pages/Acoes';
 import AcoesAnalise from './pages/AcoesAnalise';
+import Encartes from './pages/Encartes';
 
 export default function App() {
   const [collapsed, setCollapsed] = useState(false);
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="/alertas" element={<Alertas />} />
           <Route path="/acoes" element={<Acoes />} />
           <Route path="/acoes-analise" element={<AcoesAnalise />} />
+          <Route path="/encartes" element={<Encartes />} />
         </Routes>
       </main>
     </div>
