@@ -43,7 +43,7 @@ async function _calcularAnalise(acao, compInicio = null, compFim = null) {
   const idField = acao.cod_interno ? 'cod_interno' : 'ean';
 
   const [vendasAcao, vendasAnterior] = await Promise.all([
-    queryVendasPeriodo(tables, identifier, idField, inicio, fim),
+    queryVendasPeriodo(tables, identifier, idField, inicio, fim, acao.preco_acao),
     queryVendasPeriodo(tables, identifier, idField, inicioAnterior, fimAnterior),
   ]);
 
@@ -70,6 +70,7 @@ async function _calcularAnalise(acao, compInicio = null, compFim = null) {
       qtd_dia: duracaoDias > 0 ? Number((vendasAcao.qtd / duracaoDias).toFixed(2)) : 0,
       venda_dia: duracaoDias > 0 ? Number((vendasAcao.venda / duracaoDias).toFixed(2)) : 0,
       margem_dia: duracaoDias > 0 ? Number((vendasAcao.margem / duracaoDias).toFixed(2)) : 0,
+      qtd_preco_acao: vendasAcao.qtd_preco_acao || 0,
     },
     periodo_anterior: {
       inicio: inicioAnterior.toISOString().slice(0, 10),
@@ -137,7 +138,7 @@ export async function analisarTodasAcoes(filtros = {}) {
       const tables = getTablesForVendor(grupo.vendor);
       if (!tables.length) return;
       const periodos = grupo.items.flatMap((item, i) => [
-        { key: `a${i}`, inicio: item.inicio.toISOString().slice(0, 10), fim: item.fim.toISOString().slice(0, 10) },
+        { key: `a${i}`, inicio: item.inicio.toISOString().slice(0, 10), fim: item.fim.toISOString().slice(0, 10), preco: item.acao.preco_acao },
         { key: `c${i}`, inicio: item.inicioAnterior.toISOString().slice(0, 10), fim: item.fimAnterior.toISOString().slice(0, 10) },
       ]);
       const dados = await queryVendasLote(tables, grupo.identifier, grupo.idField, periodos);
@@ -166,6 +167,7 @@ export async function analisarTodasAcoes(filtros = {}) {
           qtd_dia: item.duracaoDias > 0 ? Number((vendasAcao.qtd / item.duracaoDias).toFixed(2)) : 0,
           venda_dia: item.duracaoDias > 0 ? Number((vendasAcao.venda / item.duracaoDias).toFixed(2)) : 0,
           margem_dia: item.duracaoDias > 0 ? Number((vendasAcao.margem / item.duracaoDias).toFixed(2)) : 0,
+          qtd_preco_acao: vendasAcao.qtd_preco_acao || 0,
         },
         periodo_anterior: {
           inicio: item.inicioAnterior.toISOString().slice(0, 10), fim: item.fimAnterior.toISOString().slice(0, 10), dias: item.diasComp, ...vendasAnterior,
@@ -193,28 +195,37 @@ function getTablesForVendor(vendor) {
   return tables;
 }
 
-async function queryVendasPeriodo(tables, identifier, idField, inicio, fim) {
+async function queryVendasPeriodo(tables, identifier, idField, inicio, fim, preco = null) {
   const whereClause = idField === 'ean'
     ? `(ean = $1 OR ean = $1 || ',')`
     : `${idField} = $1`;
   const eanNorm = idField === 'ean' ? identifier.replace(/,+$/, '') : identifier;
 
+  // Conta unidades vendidas exatamente ao preco_acao (venda/qtd = preco unitario)
+  const precoCol = preco != null
+    ? `, CASE WHEN ROUND((venda/NULLIF(qtd,0))::numeric, 2) = ROUND($4::numeric, 2) THEN qtd ELSE 0 END as qtd_preco_acao`
+    : `, 0 as qtd_preco_acao`;
+
   const unions = tables.map(({ t, pct }) =>
-    `SELECT qtd, venda, venda * ${pct} as margem FROM ${t} WHERE ${whereClause} AND data >= $2 AND data <= $3`
+    `SELECT qtd, venda, venda * ${pct} as margem${precoCol} FROM ${t} WHERE ${whereClause} AND data >= $2 AND data <= $3`
   ).join(' UNION ALL ');
 
   const sql = `
     SELECT COALESCE(SUM(qtd), 0) as qtd,
            COALESCE(SUM(venda), 0) as venda,
-           COALESCE(SUM(margem), 0) as margem
+           COALESCE(SUM(margem), 0) as margem,
+           COALESCE(SUM(qtd_preco_acao), 0) as qtd_preco_acao
     FROM (${unions}) sub
   `;
 
-  const res = await query(sql, [eanNorm, inicio.toISOString().slice(0, 10), fim.toISOString().slice(0, 10)]);
+  const params = [eanNorm, inicio.toISOString().slice(0, 10), fim.toISOString().slice(0, 10)];
+  if (preco != null) params.push(preco);
+
+  const res = await query(sql, params);
   const r = res.rows[0];
   const venda = Number(r.venda);
   const margem = Number(r.margem);
-  return { qtd: Number(r.qtd), venda, margem, margem_percent: venda > 0 ? (margem / venda * 100) : 0 };
+  return { qtd: Number(r.qtd), venda, margem, margem_percent: venda > 0 ? (margem / venda * 100) : 0, qtd_preco_acao: Number(r.qtd_preco_acao) };
 }
 
 /**
@@ -232,11 +243,19 @@ async function queryVendasLote(tables, identifier, idField, periodos) {
 
   // Cada tabela retorna UMA linha aggregada com todas as colunas de períodos
   const buildSelect = (t, pct) => {
-    const cols = periodos.flatMap(p => [
-      `COALESCE(SUM(CASE WHEN data >= '${p.inicio}' AND data <= '${p.fim}' THEN qtd ELSE 0 END), 0) as qtd_${p.key}`,
-      `COALESCE(SUM(CASE WHEN data >= '${p.inicio}' AND data <= '${p.fim}' THEN venda ELSE 0 END), 0) as venda_${p.key}`,
-      `COALESCE(SUM(CASE WHEN data >= '${p.inicio}' AND data <= '${p.fim}' THEN venda * ${pct} ELSE 0 END), 0) as margem_${p.key}`,
-    ]);
+    const cols = periodos.flatMap(p => {
+      const base = [
+        `COALESCE(SUM(CASE WHEN data >= '${p.inicio}' AND data <= '${p.fim}' THEN qtd ELSE 0 END), 0) as qtd_${p.key}`,
+        `COALESCE(SUM(CASE WHEN data >= '${p.inicio}' AND data <= '${p.fim}' THEN venda ELSE 0 END), 0) as venda_${p.key}`,
+        `COALESCE(SUM(CASE WHEN data >= '${p.inicio}' AND data <= '${p.fim}' THEN venda * ${pct} ELSE 0 END), 0) as margem_${p.key}`,
+      ];
+      if (p.preco != null) {
+        base.push(
+          `COALESCE(SUM(CASE WHEN data >= '${p.inicio}' AND data <= '${p.fim}' AND ROUND((venda/NULLIF(qtd,0))::numeric,2) = ROUND(${Number(p.preco)}::numeric,2) THEN qtd ELSE 0 END), 0) as qtd_preco_${p.key}`
+        );
+      }
+      return base;
+    });
     return `SELECT ${cols.join(', ')} FROM ${t} WHERE ${whereId} AND data >= '${dataMin}' AND data <= '${dataMax}'`;
   };
 
@@ -244,11 +263,15 @@ async function queryVendasLote(tables, identifier, idField, periodos) {
   if (tables.length === 1) {
     sql = buildSelect(tables[0].t, tables[0].pct);
   } else {
-    const outerCols = periodos.flatMap(p => [
-      `SUM(qtd_${p.key}) as qtd_${p.key}`,
-      `SUM(venda_${p.key}) as venda_${p.key}`,
-      `SUM(margem_${p.key}) as margem_${p.key}`,
-    ]);
+    const outerCols = periodos.flatMap(p => {
+      const cols = [
+        `SUM(qtd_${p.key}) as qtd_${p.key}`,
+        `SUM(venda_${p.key}) as venda_${p.key}`,
+        `SUM(margem_${p.key}) as margem_${p.key}`,
+      ];
+      if (p.preco != null) cols.push(`SUM(qtd_preco_${p.key}) as qtd_preco_${p.key}`);
+      return cols;
+    });
     const inner = tables.map(({ t, pct }) => buildSelect(t, pct)).join(' UNION ALL ');
     sql = `SELECT ${outerCols.join(', ')} FROM (${inner}) sub`;
   }
@@ -259,7 +282,10 @@ async function queryVendasLote(tables, identifier, idField, periodos) {
   periodos.forEach(p => {
     const venda = Number(row[`venda_${p.key}`] || 0);
     const margem = Number(row[`margem_${p.key}`] || 0);
-    result[p.key] = { qtd: Number(row[`qtd_${p.key}`] || 0), venda, margem, margem_percent: venda > 0 ? (margem / venda * 100) : 0 };
+    result[p.key] = {
+      qtd: Number(row[`qtd_${p.key}`] || 0), venda, margem, margem_percent: venda > 0 ? (margem / venda * 100) : 0,
+      qtd_preco_acao: p.preco != null ? Number(row[`qtd_preco_${p.key}`] || 0) : 0,
+    };
   });
   return result;
 }

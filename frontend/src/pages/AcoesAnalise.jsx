@@ -114,6 +114,25 @@ function ProdutoGrupo({ grupo }) {
                 </td>
               ))}
             </tr>
+            {/* Aderência ao preço da ação */}
+            <tr className="border-b border-slate-100 bg-slate-50/40">
+              <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60">
+                Vendas ao preço
+                <div className="text-[10px] text-slate-300 font-normal">PDV vs cadastrado</div>
+              </td>
+              {acoes.map((item, i) => {
+                const qtdPreco = item.periodo_acao.qtd_preco_acao || 0;
+                const qtdTotal = item.periodo_acao.qtd || 0;
+                const pct = qtdTotal > 0 ? (qtdPreco / qtdTotal * 100) : 0;
+                const cor = pct >= 80 ? 'text-green-600' : pct >= 50 ? 'text-yellow-500' : 'text-red-500';
+                return (
+                  <td key={i} className={`px-2 py-2 text-center border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/40' : ''}`}>
+                    <div className="text-sm font-bold text-slate-900">{Number(qtdPreco).toLocaleString('pt-BR')} un.</div>
+                    <div className={`text-[10px] font-semibold ${cor}`}>{pct.toFixed(0)}% do total</div>
+                  </td>
+                );
+              })}
+            </tr>
             {/* Quantidade */}
             <tr className="border-b border-slate-100">
               <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60">
