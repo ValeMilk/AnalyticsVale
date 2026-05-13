@@ -86,17 +86,17 @@ export default function Vendas() {
   if (loading || !acoesLoaded) return <LoadingSpinner />;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Vendas</h1>
-        <p className="text-slate-500 text-sm mt-1">Dados consolidados de vendas diárias</p>
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Vendas</h1>
+        <p className="text-slate-500 text-xs sm:text-sm mt-1">Dados consolidados de vendas diárias</p>
       </div>
 
       {/* Filtros */}
       <Filters filters={filters} onChange={setFilters} produtos={produtos} />
 
-      <div className="flex flex-wrap gap-4">
-        <div className="relative flex-1 min-w-[250px]">
+      <div className="flex flex-wrap gap-3">
+        <div className="relative flex-1 min-w-0">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
@@ -108,16 +108,58 @@ export default function Vendas() {
         </div>
       </div>
 
-      {/* Tabela */}
-      <div className="flex items-center gap-4 text-xs text-slate-500">
+      {/* Legenda */}
+      <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
         <span>Legenda:</span>
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-500/30 border-l-2 border-blue-500" /> Encarte</span>
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500/30 border-l-2 border-green-500" /> Oferta Interna</span>
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500/30 border-l-2 border-orange-500" /> Rebaixa</span>
       </div>
 
-      {/* Tabela dados */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+      {/* Mobile: cards */}
+      <div className="sm:hidden space-y-2">
+        {filtered.slice(0, 200).map((v, i) => {
+          const margem = (Number(v.venda) || 0) - (Number(v.custo) || 0);
+          const acaoAtiva = getAcaoParaVenda(v);
+          const cor = acaoAtiva ? ACAO_COLORS[acaoAtiva.tipo] : null;
+          return (
+            <div key={i} className={`bg-white rounded-xl border p-3 shadow-sm ${cor ? `border-l-4 ${cor.border} ${cor.bg}` : 'border-slate-200'}`}>
+              <div className="flex items-start justify-between gap-2 mb-1.5">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-slate-900 truncate">{v.produto}</p>
+                  <p className="text-xs text-slate-400">{v.data?.slice(0, 10)} · {v.nome_loja}</p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {cor && <span className={`w-2 h-2 rounded-full ${cor.dot}`} />}
+                  <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${v.bandeira === 'Valemilk' ? 'bg-royal/10 text-royal' : 'bg-cyan-500/10 text-cyan-600'}`}>
+                    {v.bandeira}
+                  </span>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div>
+                  <p className="text-slate-400">Qtd</p>
+                  <p className="font-semibold text-slate-700">{v.qtd}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400">Venda</p>
+                  <p className="font-semibold text-slate-900">{fmt(v.venda)}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400">Sell In</p>
+                  <p className={`font-semibold ${margem >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{fmt(margem)}</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <p className="text-center text-xs text-slate-400 py-2">
+          {Math.min(filtered.length, 200)} de {filtered.length} registros
+        </p>
+      </div>
+
+      {/* Desktop: tabela */}
+      <div className="hidden sm:block bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

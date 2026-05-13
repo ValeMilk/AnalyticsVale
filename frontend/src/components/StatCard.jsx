@@ -14,15 +14,15 @@ export default function StatCard({ icon: Icon, label, value, sub, color = 'blue'
   };
 
   return (
-    <div className={`rounded-2xl bg-gradient-to-br ${colorMap[color]} border p-5 bg-white transition-transform hover:scale-[1.02]`}>
-      <div className="flex items-center justify-between mb-4">
-        <div className={`w-10 h-10 rounded-xl ${iconBg[color]} flex items-center justify-center`}>
-          <Icon size={20} />
+    <div className={`rounded-2xl bg-gradient-to-br ${colorMap[color]} border p-4 sm:p-5 bg-white transition-transform hover:scale-[1.02]`}>
+      <div className="flex items-center justify-between mb-3 sm:mb-4">
+        <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl ${iconBg[color]} flex items-center justify-center`}>
+          <Icon size={18} />
         </div>
       </div>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
-      <p className="text-sm text-slate-500 mt-1">{label}</p>
-      {sub && <p className={`text-xs mt-2 ${colorMap[color].split(' ').pop()}`}>{sub}</p>}
+      <p className="text-xl sm:text-2xl font-bold text-slate-900 truncate">{value}</p>
+      <p className="text-xs sm:text-sm text-slate-500 mt-1">{label}</p>
+      {sub && <p className={`text-xs mt-1 sm:mt-2 ${colorMap[color].split(' ').pop()}`}>{sub}</p>}
     </div>
   );
 }

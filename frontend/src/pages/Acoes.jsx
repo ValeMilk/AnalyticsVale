@@ -261,26 +261,26 @@ export default function Acoes() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-5 gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Ações Comerciais</h1>
-          <p className="text-slate-500 mt-1">Cadastre encartes, ofertas internas e rebaixas</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Ações Comerciais</h1>
+          <p className="text-slate-500 text-xs sm:text-sm mt-0.5 hidden sm:block">Cadastre encartes, ofertas internas e rebaixas</p>
         </div>
         <button onClick={openNew}
-          className="flex items-center gap-2 px-5 py-2.5 bg-royal hover:bg-royal/90 text-white rounded-xl text-sm font-medium transition-colors">
-          <Plus size={18} /> Nova Ação
+          className="flex items-center gap-2 px-4 py-2.5 bg-royal hover:bg-royal/90 text-white rounded-xl text-sm font-medium transition-colors shrink-0">
+          <Plus size={18} /> <span className="hidden sm:inline">Nova Ação</span><span className="sm:hidden">Nova</span>
         </button>
       </div>
 
       {/* Filtros */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
         <button onClick={() => setFiltroTipo('')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${!filtroTipo ? 'bg-royal/10 text-royal border border-royal/20' : 'text-slate-500 hover:text-slate-900 border border-slate-200'}`}>
+          className={`shrink-0 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${!filtroTipo ? 'bg-royal/10 text-royal border border-royal/20' : 'text-slate-500 hover:text-slate-900 border border-slate-200'}`}>
           Todos
         </button>
         {TIPOS.map(t => (
           <button key={t.value} onClick={() => setFiltroTipo(t.value)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium border transition-all ${filtroTipo === t.value ? t.color : 'border-slate-200 text-slate-500 hover:text-slate-900'}`}>
+            className={`shrink-0 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium border transition-all ${filtroTipo === t.value ? t.color : 'border-slate-200 text-slate-500 hover:text-slate-900'}`}>
             {t.label}
           </button>
         ))}
@@ -298,23 +298,24 @@ export default function Acoes() {
             const info = tipoInfo(acao.tipo);
             const ativa = acao.data_inicio?.slice(0, 10) <= hoje && acao.data_fim?.slice(0, 10) >= hoje;
             return (
-              <div key={acao._id} className="bg-white rounded-xl border border-slate-200 p-5 flex items-center gap-4 shadow-sm">
-                <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${info.color}`}>
+              <div key={acao._id} className="bg-white rounded-xl border border-slate-200 p-4 flex items-start sm:items-center gap-3 shadow-sm">
+                <div className={`px-2.5 py-1 rounded-lg text-xs font-semibold border shrink-0 ${info.color}`}>
                   {info.label}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-slate-900 font-medium truncate">{acao.produto}</span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-slate-900 font-medium truncate text-sm">{acao.produto}</span>
                     {ativa && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-500/10 text-green-600 border border-green-500/20">ATIVA</span>}
                   </div>
-                  <div className="flex items-center gap-4 mt-1 text-xs text-slate-500">
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-slate-500">
                     <span>Cód: {acao.cod_interno || acao.ean}</span>
                     <span>Preço: {fmt(acao.preco_acao)}</span>
-                    <span>{acao.data_inicio?.slice(0, 10)} → {acao.data_fim?.slice(0, 10)}</span>
+                    <span className="hidden sm:inline">{acao.data_inicio?.slice(0, 10)} → {acao.data_fim?.slice(0, 10)}</span>
+                    <span className="sm:hidden">{acao.data_inicio?.slice(5, 10)} → {acao.data_fim?.slice(5, 10)}</span>
                     <span className="capitalize">{acao.vendor}</span>
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-1 shrink-0">
                   <button onClick={() => openEdit(acao)} className="p-2 rounded-lg text-slate-400 hover:text-royal hover:bg-royal/10 transition-colors">
                     <Edit2 size={16} />
                   </button>

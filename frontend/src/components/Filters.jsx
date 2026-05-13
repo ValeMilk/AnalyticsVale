@@ -27,19 +27,17 @@ function MultiSelectDropdown({ label, items, selected, onToggle, onClear, getKey
       <button
         type="button"
         onClick={() => { setOpen(o => !o); setSearch(''); }}
-        className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm border transition-all text-left ${
-          hasSelection && selected.length === 1
-            ? 'bg-royal/10 text-royal border-royal/20 font-medium min-w-[200px]'
-            : hasSelection
-            ? 'bg-royal/10 text-royal border-royal/20 font-medium min-w-[200px] max-w-[280px]'
-            : 'bg-slate-50 text-slate-500 border-slate-200 hover:text-slate-900 min-w-[200px] max-w-[280px]'
-        }`}
+        className={`w-full sm:w-auto flex items-center gap-2 px-3 py-2 rounded-xl text-sm border transition-all text-left ${
+          hasSelection
+            ? 'bg-royal/10 text-royal border-royal/20 font-medium'
+            : 'bg-slate-50 text-slate-500 border-slate-200 hover:text-slate-900'
+        } sm:min-w-[180px] sm:max-w-[260px]`}
       >
-        <span className={hasSelection && selected.length === 1 ? 'flex-1' : 'flex-1 truncate'}>
+        <span className="flex-1 truncate">
           {hasSelection
             ? selected.length === 1
               ? getLabel(items.find(i => getKey(i) === selected[0]) || {})
-              : `${selected.length} ${label.toLowerCase()} selecionadas`
+              : `${selected.length} ${label.toLowerCase()} sel.`
             : `Todas as ${label.toLowerCase()}`}
         </span>
         {hasSelection
@@ -49,7 +47,7 @@ function MultiSelectDropdown({ label, items, selected, onToggle, onClear, getKey
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-50 w-72 bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden">
+        <div className="absolute left-0 top-full mt-1 z-50 w-full sm:w-72 bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden">
           <div className="p-2 border-b border-slate-100">
             <div className="relative">
               <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -141,38 +139,42 @@ export default function Filters({ filters, onChange, produtos = [], lojas = [] }
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2 mb-3">
         <Filter size={16} className="text-slate-400" />
         <h3 className="text-sm font-semibold text-slate-600">Filtros</h3>
       </div>
-      <div className="flex flex-wrap gap-3 items-center">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center">
         {/* Período */}
-        <div className="flex gap-2 items-center">
-          <label className="text-xs text-slate-500">De:</label>
-          <input
-            type="date"
-            value={filters.data_inicio || ''}
-            max={hoje}
-            onChange={(e) => update('data_inicio', e.target.value)}
-            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:border-royal"
-          />
-          <label className="text-xs text-slate-500">Até:</label>
-          <input
-            type="date"
-            value={filters.data_fim || ''}
-            max={hoje}
-            onChange={(e) => update('data_fim', e.target.value)}
-            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:border-royal"
-          />
+        <div className="grid grid-cols-2 sm:flex gap-2 sm:items-center">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-1">
+            <label className="text-xs text-slate-500">De:</label>
+            <input
+              type="date"
+              value={filters.data_inicio || ''}
+              max={hoje}
+              onChange={(e) => update('data_inicio', e.target.value)}
+              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:border-royal w-full"
+            />
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-1">
+            <label className="text-xs text-slate-500">Até:</label>
+            <input
+              type="date"
+              value={filters.data_fim || ''}
+              max={hoje}
+              onChange={(e) => update('data_fim', e.target.value)}
+              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:border-royal w-full"
+            />
+          </div>
         </div>
 
         {/* Vendor */}
-        <div className="flex gap-2">
+        <div className="flex gap-2 overflow-x-auto pb-0.5">
           {['ambos', 'valemilk', 'valefish'].map((v) => (
             <button
               key={v}
               onClick={() => update('vendor', v)}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+              className={`shrink-0 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all ${
                 filters.vendor === v
                   ? 'bg-royal/10 text-royal border border-royal/20'
                   : 'bg-slate-50 text-slate-500 border border-slate-200 hover:text-slate-900'

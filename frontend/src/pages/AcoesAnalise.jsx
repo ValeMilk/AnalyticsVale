@@ -61,27 +61,27 @@ function ProdutoGrupo({ grupo }) {
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-      {/* Header do produto */}
-      <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-4">
-        <div>
-          <h3 className="font-bold text-slate-900">{produto}</h3>
+      {/* Header produto */}
+      <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="font-bold text-slate-900 text-sm sm:text-base">{produto}</h3>
           <p className="text-xs text-slate-400 mt-0.5">
             {cod_interno && <span>Cód. {cod_interno} · </span>}
             {vendor} · EAN: {ean?.replace(/,+$/, '')}
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 flex-wrap shrink-0">
           {tiposBadge.map(t => (
             <span key={t} className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${tipoColor[t] || tipoColor.encarte}`}>
               {tipoLabel[t]}
             </span>
           ))}
-          <span className="text-xs text-slate-400 ml-2">{acoes.length} ação{acoes.length !== 1 ? 'ões' : ''}</span>
+          <span className="text-xs text-slate-400">{acoes.length} ação{acoes.length !== 1 ? 'ões' : ''}</span>
         </div>
       </div>
 
-      {/* Tabela de comparação horizontal */}
-      <div className="w-full">
+      {/* Tabela — scroll horizontal no mobile */}
+      <div className="overflow-x-auto w-full">
         <table className="w-full text-sm border-collapse table-fixed">
           <thead>
             <tr className="border-b-2 border-slate-200">
@@ -310,51 +310,51 @@ export default function AcoesAnalise() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Análise de Eficácia</h1>
-        <p className="text-slate-500 mt-1">Compare ações do mesmo produto lado a lado</p>
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Análise de Eficácia</h1>
+        <p className="text-slate-500 text-xs sm:text-sm mt-1">Compare ações do mesmo produto lado a lado</p>
       </div>
 
       {/* Resumo */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-xl border border-slate-200 p-5 text-center shadow-sm">
-          <p className="text-3xl font-bold text-slate-900">{grupos.length}</p>
-          <p className="text-sm text-slate-500 mt-1">Produtos</p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
+        <div className="bg-white rounded-xl border border-slate-200 p-3 sm:p-5 text-center shadow-sm">
+          <p className="text-2xl sm:text-3xl font-bold text-slate-900">{grupos.length}</p>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">Produtos</p>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-5 text-center shadow-sm">
-          <p className="text-3xl font-bold text-slate-900">{analiseFiltradas.length}</p>
-          <p className="text-sm text-slate-500 mt-1">Total de Ações</p>
+        <div className="bg-white rounded-xl border border-slate-200 p-3 sm:p-5 text-center shadow-sm">
+          <p className="text-2xl sm:text-3xl font-bold text-slate-900">{analiseFiltradas.length}</p>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">Total de Ações</p>
         </div>
-        <div className="bg-white rounded-xl border border-green-500/20 p-5 text-center shadow-sm">
-          <p className="text-3xl font-bold text-green-600">{totalEficaz}</p>
-          <p className="text-sm text-slate-500 mt-1">Eficazes</p>
+        <div className="bg-white rounded-xl border border-green-500/20 p-3 sm:p-5 text-center shadow-sm">
+          <p className="text-2xl sm:text-3xl font-bold text-green-600">{totalEficaz}</p>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">Eficazes</p>
         </div>
-        <div className="bg-white rounded-xl border border-red-500/20 p-5 text-center shadow-sm">
-          <p className="text-3xl font-bold text-red-600">{totalIneficaz}</p>
-          <p className="text-sm text-slate-500 mt-1">Ineficazes</p>
+        <div className="bg-white rounded-xl border border-red-500/20 p-3 sm:p-5 text-center shadow-sm">
+          <p className="text-2xl sm:text-3xl font-bold text-red-600">{totalIneficaz}</p>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">Ineficazes</p>
         </div>
       </div>
 
       {/* Filtros */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5 mb-6 shadow-sm">
-        <div className="flex flex-wrap items-end gap-4">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 mb-4 sm:mb-6 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3 sm:gap-4">
           {/* Subcategoria */}
-          <div>
+          <div className="flex-1 min-w-0 sm:flex-none">
             <label className="block text-xs text-slate-500 mb-1.5">Subcategoria</label>
             <select value={subcatSelecionada} onChange={e => { setSubcatSelecionada(e.target.value); setEansSelecionados([]); }}
-              className="bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-slate-900 text-xs focus:border-royal focus:outline-none w-48">
+              className="w-full sm:w-48 bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 sm:py-1.5 text-slate-900 text-xs focus:border-royal focus:outline-none">
               <option value="">Todas</option>
               {subcategorias.map(sub => <option key={sub} value={sub}>{sub}</option>)}
             </select>
           </div>
 
-          {/* Produto (filtrado por subcategoria) */}
-          <div>
+          {/* Produto */}
+          <div className="flex-1 min-w-0 sm:flex-none">
             <label className="block text-xs text-slate-500 mb-1.5">Produto</label>
             <select
               value={eansSelecionados[0] || ''}
               onChange={e => setEansSelecionados(e.target.value ? [e.target.value] : [])}
-              className="bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-slate-900 text-xs focus:border-royal focus:outline-none w-56">
+              className="w-full sm:w-56 bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 sm:py-1.5 text-slate-900 text-xs focus:border-royal focus:outline-none">
               <option value="">Todos</option>
               {(subcatSelecionada ? produtosDaSubcat : produtos).map(p => (
                 <option key={p.ean} value={p.ean?.replace(/,+$/, '')}>{p.produto}</option>
@@ -365,10 +365,10 @@ export default function AcoesAnalise() {
           {/* Tipo */}
           <div>
             <label className="block text-xs text-slate-500 mb-1.5">Tipo de Ação</label>
-            <div className="flex gap-2">
+            <div className="flex gap-1.5 flex-wrap">
               {TIPOS.map(t => (
                 <button key={t.value} onClick={() => setFiltroTipo(t.value)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${filtroTipo === t.value ? 'bg-royal/10 text-royal border-royal/20' : 'border-slate-200 text-slate-500 hover:text-slate-900'}`}>
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all ${filtroTipo === t.value ? 'bg-royal/10 text-royal border-royal/20' : 'border-slate-200 text-slate-500 hover:text-slate-900'}`}>
                   {t.label}
                 </button>
               ))}
@@ -376,21 +376,21 @@ export default function AcoesAnalise() {
           </div>
 
           {/* Período de Comparação */}
-          <div className="flex items-end gap-2 ml-auto">
-            <Calendar size={16} className="text-slate-400 mb-2" />
+          <div className="flex items-end gap-2 sm:ml-auto">
+            <Calendar size={16} className="text-slate-400 mb-2 hidden sm:block" />
             <div>
-              <label className="block text-xs text-slate-500 mb-1.5">Comparar com - Início</label>
+              <label className="block text-xs text-slate-500 mb-1.5">Período comparação - Início</label>
               <input type="date" value={compInicio} onChange={(e) => setCompInicio(e.target.value)}
-                className="bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-slate-900 text-xs focus:border-royal focus:outline-none" />
+                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 sm:py-1.5 text-slate-900 text-xs focus:border-royal focus:outline-none" />
             </div>
             <div>
               <label className="block text-xs text-slate-500 mb-1.5">Fim</label>
               <input type="date" value={compFim} onChange={(e) => setCompFim(e.target.value)}
-                className="bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-slate-900 text-xs focus:border-royal focus:outline-none" />
+                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 sm:py-1.5 text-slate-900 text-xs focus:border-royal focus:outline-none" />
             </div>
             {(compInicio || compFim) && (
               <button onClick={() => { setCompInicio(''); setCompFim(''); }}
-                className="px-3 py-1.5 rounded-lg text-xs text-slate-500 hover:text-slate-900 border border-slate-200 hover:border-slate-300 transition-all">
+                className="px-3 py-2 sm:py-1.5 rounded-lg text-xs text-slate-500 hover:text-slate-900 border border-slate-200 hover:border-slate-300 transition-all shrink-0">
                 Limpar
               </button>
             )}

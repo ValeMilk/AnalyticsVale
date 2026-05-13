@@ -126,16 +126,16 @@ export default function Dashboard() {
   if (loading) return <LoadingSpinner />;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-        <p className="text-slate-500 text-sm mt-1">Visão consolidada Valemilk + Valefish</p>
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Dashboard</h1>
+        <p className="text-slate-500 text-xs sm:text-sm mt-1">Visão consolidada Valemilk + Valefish</p>
       </div>
 
       <Filters filters={filters} onChange={setFilters} produtos={produtos} lojas={lojas} />
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
         <StatCard
           icon={DollarSign}
           label="Total Vendas"
@@ -167,10 +167,10 @@ export default function Dashboard() {
       </div>
 
       {/* Sales Chart */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-slate-900">Vendas Totais</h2>
-          <div className="flex items-center gap-3 text-xs text-slate-500">
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+          <h2 className="text-base sm:text-lg font-semibold text-slate-900">Vendas Totais</h2>
+          <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
             <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-yellow-500" /> Encarte</span>
             <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Oferta Interna</span>
             <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-orange-500" /> Rebaixa</span>
@@ -180,13 +180,13 @@ export default function Dashboard() {
       </div>
 
       {/* Monthly Day Chart */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-4">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">Vendas por Dia do Mês</h2>
-            <p className="text-sm text-slate-400">Cada linha representa um mês — eixo X é o dia do mês</p>
+            <h2 className="text-base sm:text-lg font-semibold text-slate-900">Vendas por Dia do Mês</h2>
+            <p className="text-xs sm:text-sm text-slate-400">Cada linha = um mês · eixo X = dia do mês</p>
           </div>
-          <div className="flex items-center gap-3 text-xs text-slate-500">
+          <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
             <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-yellow-500" /> Encarte</span>
             <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Oferta Interna</span>
             <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-orange-500" /> Rebaixa</span>
@@ -203,12 +203,12 @@ export default function Dashboard() {
 
       {/* Bottom Grid: Ranking + Alerts */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Top 10 Produtos</h2>
+        <div className="xl:col-span-2 bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-sm">
+          <h2 className="text-base sm:text-lg font-semibold text-slate-900 mb-4">Top 10 Produtos</h2>
           <RankingTable data={ranking} limit={10} />
         </div>
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Ações Ativas</h2>
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-sm">
+          <h2 className="text-base sm:text-lg font-semibold text-slate-900 mb-4">Ações Ativas</h2>
           <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
             {(() => {
               const hoje = new Date().toISOString().slice(0, 10);
