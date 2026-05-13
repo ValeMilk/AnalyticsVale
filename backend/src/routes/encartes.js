@@ -25,6 +25,20 @@ async function syncAcoes(encarte) {
   await AcaoComercial.insertMany(docs);
 }
 
+// POST /api/encartes/sync-acoes — sincroniza todos os encartes existentes
+router.post('/sync-acoes', async (req, res) => {
+  try {
+    const encartes = await Encarte.find({});
+    for (const enc of encartes) {
+      await syncAcoes(enc);
+    }
+    res.json({ status: 'success', message: `${encartes.length} encarte(s) sincronizado(s)` });
+  } catch (err) {
+    console.error('❌ POST /api/encartes/sync-acoes:', err);
+    res.status(500).json({ status: 'error', error: err.message });
+  }
+});
+
 // GET /api/encartes — listar todos (mais recentes primeiro)
 router.get('/', async (req, res) => {
   try {
