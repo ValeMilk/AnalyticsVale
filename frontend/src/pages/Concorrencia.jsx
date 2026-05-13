@@ -71,11 +71,14 @@ function ItemCard({ item }) {
             )}
           </div>
 
-          {/* Nossa ação (se tiver cruzamento) */}
+          {/* Nossa ação (conflito de período) */}
           {item.nossa_acao && (
-            <div className="mt-2 flex items-center gap-2 flex-wrap bg-royal/5 border border-royal/20 rounded-lg px-3 py-2">
-              <span className="text-xs text-slate-500">Nossa ação:</span>
+            <div className="mt-2 flex flex-wrap items-center gap-2 bg-royal/5 border border-royal/20 rounded-lg px-3 py-2">
+              <span className="text-xs text-slate-500">Nossa ação ({item.nossa_acao.tipo}):</span>
               <span className="text-xs font-bold text-royal">{fmt(item.nossa_acao.preco_acao)}</span>
+              <span className="text-xs text-slate-400">
+                {fmtDate(item.nossa_acao.data_inicio?.slice(0,10))} → {fmtDate(item.nossa_acao.data_fim?.slice(0,10))}
+              </span>
               <DiffBadge nosso={item.nossa_acao.preco_acao} concorrente={item.value} />
             </div>
           )}

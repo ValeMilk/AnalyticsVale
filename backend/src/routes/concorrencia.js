@@ -75,35 +75,45 @@ router.get('/', async (req, res) => {
       })
     )];
 
-    // Busca nossas ações ativas para os mesmos EANs
+    // Busca TODAS as nossas ações (sem filtro de data — vamos checar sobreposição por item)
     const nossasAcoes = await AcaoComercial.find({
       ean: { $in: todosEans },
       ativo: true,
     }).select('ean preco_acao tipo data_inicio data_fim vendor').lean();
 
-    // Monta lookup: ean → melhor nossa ação ativa (tenta com e sem zeros)
-    const hoje = new Date();
+    // Monta lookup: ean → lista de nossas ações
     const nossasMap = {};
     for (const a of nossasAcoes) {
-      const inicio = new Date(a.data_inicio);
-      const fim = new Date(a.data_fim);
-      if (inicio <= hoje && fim >= hoje) {
-        const key = normEan(a.ean);
-        if (!nossasMap[key] || a.preco_acao < nossasMap[key].preco_acao) {
-          nossasMap[key] = a;
-          nossasMap[a.ean] = a; // também indexa versão original
-        }
+      const keys = [a.ean, normEan(a.ean)];
+      for (const key of keys) {
+        if (!nossasMap[key]) nossasMap[key] = [];
+        nossasMap[key].push(a);
       }
     }
 
-    // Adiciona campo nossa_acao em cada item
+    // Adiciona campo nossa_acao em cada item: busca ação com sobreposição de datas
     const resultado = dados.map(d => {
       const eanList = Array.isArray(d.eans) ? d.eans.map(String) : d.eans ? [String(d.eans)] : [];
-      const eanMatch = eanList.find(e => nossasMap[e] || nossasMap[normEan(e)]);
-      return {
-        ...d,
-        nossa_acao: eanMatch ? (nossasMap[eanMatch] || nossasMap[normEan(eanMatch)]) : null,
-      };
+      const compInicio = d.validity_start_date;
+      const compFim = d.validity_finish_date;
+
+      let melhorAcao = null;
+      for (const e of eanList) {
+        const acoes = nossasMap[e] || nossasMap[normEan(e)] || [];
+        for (const a of acoes) {
+          const nossaInicio = a.data_inicio?.toISOString?.().slice(0, 10) || String(a.data_inicio).slice(0, 10);
+          const nossaFim   = a.data_fim?.toISOString?.().slice(0, 10)    || String(a.data_fim).slice(0, 10);
+          // Sobreposição: nossa ação começa antes do fim do concorrente E termina após o início
+          const overlap = nossaInicio <= compFim && nossaFim >= compInicio;
+          if (overlap) {
+            // Mantém a ação com menor preço em caso de múltiplas
+            if (!melhorAcao || a.preco_acao < melhorAcao.preco_acao) {
+              melhorAcao = a;
+            }
+          }
+        }
+      }
+      return { ...d, nossa_acao: melhorAcao };
     });
 
     // Lista de redes únicas (para filtros no front)
