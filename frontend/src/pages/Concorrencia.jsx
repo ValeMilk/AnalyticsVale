@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, TrendingDown, TrendingUp, Minus, RefreshCw, Store, Calendar, Tag } from 'lucide-react';
 import api from '../api/client';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -93,17 +93,26 @@ export default function Concorrencia() {
 
   // Filtros
   const [search, setSearch] = useState('');
+  const [searchDebounced, setSearchDebounced] = useState('');
   const [redeSel, setRedeSel] = useState('');
   const [somenteConflito, setSomenteConflito] = useState(false);
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
+  const debounceRef = useRef(null);
+
+  // Debounce na busca: só dispara request 600ms após parar de digitar
+  const handleSearch = (val) => {
+    setSearch(val);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setSearchDebounced(val), 600);
+  };
 
   const carregar = useCallback(async () => {
     setLoading(true);
     setErro(null);
     try {
       const params = new URLSearchParams();
-      if (search) params.set('search', search);
+      if (searchDebounced) params.set('search', searchDebounced);
       if (redeSel) params.set('network', redeSel);
       if (dataInicio) params.set('data_inicio', dataInicio);
       if (dataFim) params.set('data_fim', dataFim);
@@ -116,7 +125,7 @@ export default function Concorrencia() {
     } finally {
       setLoading(false);
     }
-  }, [search, redeSel, dataInicio, dataFim]);
+  }, [searchDebounced, redeSel, dataInicio, dataFim]);
 
   useEffect(() => { carregar(); }, [carregar]);
 
@@ -167,7 +176,7 @@ export default function Concorrencia() {
           <input
             type="text"
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => handleSearch(e.target.value)}
             placeholder="Buscar produto ou EAN..."
             className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:border-royal focus:outline-none"
           />
