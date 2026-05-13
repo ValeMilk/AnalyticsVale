@@ -120,7 +120,7 @@ function EncarteForm({ encarte, onClose, onSave }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div className="fixed inset-0 bg-black/50 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
       {/* Sheet no mobile, modal no desktop */}
       <div className="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[95dvh] flex flex-col shadow-2xl">
         {/* Header */}
