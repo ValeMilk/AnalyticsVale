@@ -94,10 +94,13 @@ export default function Concorrencia() {
   // Filtros
   const [search, setSearch] = useState('');
   const [searchDebounced, setSearchDebounced] = useState('');
-  const [redeSel, setRedeSel] = useState('');
+  const [redeSel] = useState('COMETA'); // sempre filtrado por COMETA
   const [somenteConflito, setSomenteConflito] = useState(false);
-  const [dataInicio, setDataInicio] = useState('');
-  const [dataFim, setDataFim] = useState('');
+  // Período padrão: últimos 90 dias
+  const hoje = new Date().toISOString().slice(0, 10);
+  const noventaDias = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const [dataInicio, setDataInicio] = useState(noventaDias);
+  const [dataFim, setDataFim] = useState(hoje);
   const debounceRef = useRef(null);
 
   // Debounce na busca: só dispara request 600ms após parar de digitar
@@ -170,6 +173,13 @@ export default function Concorrencia() {
 
       {/* Filtros */}
       <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
+        {/* Rede fixada */}
+        <div className="flex items-center gap-2">
+          <Store size={14} className="text-slate-400" />
+          <span className="text-xs text-slate-500">Rede monitorada:</span>
+          <span className="text-xs font-bold text-royal bg-royal/10 px-2 py-0.5 rounded-full">COMETA</span>
+        </div>
+
         {/* Busca */}
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -182,23 +192,17 @@ export default function Concorrencia() {
           />
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-3">
-          {/* Rede */}
-          <select
-            value={redeSel}
-            onChange={e => setRedeSel(e.target.value)}
-            className="flex-1 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:border-royal focus:outline-none"
-          >
-            <option value="">Todas as redes</option>
-            {redes.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
-
-          {/* Datas */}
-          <div className="grid grid-cols-2 gap-2 flex-1">
+        {/* Datas */}
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">De</label>
             <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)}
-              className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:border-royal focus:outline-none" />
+              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:border-royal focus:outline-none" />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Até</label>
             <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)}
-              className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:border-royal focus:outline-none" />
+              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:border-royal focus:outline-none" />
           </div>
         </div>
 

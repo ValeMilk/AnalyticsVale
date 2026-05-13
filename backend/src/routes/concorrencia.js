@@ -62,11 +62,16 @@ router.get('/', async (req, res) => {
     dados.sort((a, b) => (b.validity_start_date || '').localeCompare(a.validity_start_date || ''));
 
     // Coleta todos os EANs para cruzar com nossas ações
+    // Normaliza: remove zeros à esquerda e converte para string
+    const normEan = (e) => String(e).replace(/^0+/, '') || String(e);
+
     const todosEans = [...new Set(
       dados.flatMap(d => {
-        if (Array.isArray(d.eans)) return d.eans.map(String);
-        if (d.eans) return [String(d.eans)];
-        return [];
+        let eanList = [];
+        if (Array.isArray(d.eans)) eanList = d.eans.map(String);
+        else if (d.eans) eanList = [String(d.eans)];
+        // Inclui versão com e sem zeros à esquerda
+        return eanList.flatMap(e => [e, normEan(e)]);
       })
     )];
 
@@ -76,27 +81,28 @@ router.get('/', async (req, res) => {
       ativo: true,
     }).select('ean preco_acao tipo data_inicio data_fim vendor').lean();
 
-    // Monta lookup: ean → melhor nossa ação ativa
+    // Monta lookup: ean → melhor nossa ação ativa (tenta com e sem zeros)
     const hoje = new Date();
     const nossasMap = {};
     for (const a of nossasAcoes) {
       const inicio = new Date(a.data_inicio);
       const fim = new Date(a.data_fim);
       if (inicio <= hoje && fim >= hoje) {
-        // Mantém o menor preço se houver múltiplas
-        if (!nossasMap[a.ean] || a.preco_acao < nossasMap[a.ean].preco_acao) {
-          nossasMap[a.ean] = a;
+        const key = normEan(a.ean);
+        if (!nossasMap[key] || a.preco_acao < nossasMap[key].preco_acao) {
+          nossasMap[key] = a;
+          nossasMap[a.ean] = a; // também indexa versão original
         }
       }
     }
 
     // Adiciona campo nossa_acao em cada item
     const resultado = dados.map(d => {
-      const eans = Array.isArray(d.eans) ? d.eans.map(String) : d.eans ? [String(d.eans)] : [];
-      const eanMatch = eans.find(e => nossasMap[e]);
+      const eanList = Array.isArray(d.eans) ? d.eans.map(String) : d.eans ? [String(d.eans)] : [];
+      const eanMatch = eanList.find(e => nossasMap[e] || nossasMap[normEan(e)]);
       return {
         ...d,
-        nossa_acao: eanMatch ? nossasMap[eanMatch] : null,
+        nossa_acao: eanMatch ? (nossasMap[eanMatch] || nossasMap[normEan(eanMatch)]) : null,
       };
     });
 
