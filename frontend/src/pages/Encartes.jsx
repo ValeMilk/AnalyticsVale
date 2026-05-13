@@ -88,7 +88,17 @@ function EncarteForm({ encarte, onClose, onSave }) {
   const removeItem = (ean) => setItens(prev => prev.filter(i => i.ean !== ean));
 
   const updatePreco = (ean, val) => {
-    setItens(prev => prev.map(i => i.ean === ean ? { ...i, preco_oferta: val } : i));
+    // Aceita vírgula como separador decimal
+    const normalized = val.replace(',', '.');
+    setItens(prev => prev.map(i => i.ean === ean ? { ...i, preco_oferta: val, _preco_num: normalized } : i));
+  };
+
+  const addAllSubcat = (prods) => {
+    const novos = prods
+      .filter(p => !jaAdicionado(p.ean))
+      .map(p => ({ ean: p.ean, cod_interno: p.cod_interno || '', produto: p.produto, preco_oferta: '', _preco_num: '' }));
+    if (novos.length === 0) return;
+    setItens(prev => [...prev, ...novos]);
   };
 
   const set = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.value }));
@@ -97,14 +107,17 @@ function EncarteForm({ encarte, onClose, onSave }) {
     e.preventDefault();
     if (!form.titulo.trim()) return alert('Informe o título do encarte');
     if (itens.length === 0) return alert('Adicione ao menos um produto');
-    const semPreco = itens.find(i => !i.preco_oferta || isNaN(Number(i.preco_oferta)));
+    const semPreco = itens.find(i => {
+      const num = Number(String(i.preco_oferta).replace(',', '.'));
+      return !i.preco_oferta || isNaN(num);
+    });
     if (semPreco) return alert(`Informe o preço de oferta para: ${semPreco.produto}`);
 
     setSaving(true);
     try {
       const payload = {
         ...form,
-        itens: itens.map(i => ({ ...i, preco_oferta: Number(i.preco_oferta) })),
+        itens: itens.map(i => ({ ean: i.ean, cod_interno: i.cod_interno, produto: i.produto, preco_oferta: Number(String(i.preco_oferta).replace(',', '.')) })),
       };
       if (isEdit) {
         await api.put(`/encartes/${encarte._id}`, payload);
@@ -122,7 +135,7 @@ function EncarteForm({ encarte, onClose, onSave }) {
   return (
     <div className="fixed inset-0 bg-black/50 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
       {/* Sheet no mobile, modal no desktop */}
-      <div className="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[calc(100dvh-4.5rem)] sm:max-h-[90dvh] flex flex-col shadow-2xl mb-16 sm:mb-0">
+      <div className="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[78vh] sm:max-h-[90dvh] flex flex-col shadow-2xl mb-16 sm:mb-0">
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-slate-100 shrink-0">
           {/* Drag handle mobile */}
@@ -220,9 +233,8 @@ function EncarteForm({ encarte, onClose, onSave }) {
                       <div className="relative shrink-0 w-24">
                         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">R$</span>
                         <input
-                          type="number"
-                          step="0.01"
-                          min="0"
+                          type="text"
+                          inputMode="decimal"
                           value={item.preco_oferta}
                           onChange={e => updatePreco(item.ean, e.target.value)}
                           placeholder="0,00"
@@ -279,8 +291,14 @@ function EncarteForm({ encarte, onClose, onSave }) {
                             className="w-full flex items-center justify-between px-4 py-2.5 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-slate-100 text-left"
                           >
                             <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">{sub}</span>
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-2">
                               <span className="text-xs text-slate-400">{prods.length}</span>
+                              <button
+                                type="button"
+                                onMouseDown={e => e.stopPropagation()}
+                                onClick={(e) => { e.stopPropagation(); addAllSubcat(prods); }}
+                                className="text-xs text-royal font-semibold bg-royal/10 hover:bg-royal/20 px-2 py-0.5 rounded-full transition-colors"
+                              >+ todos</button>
                               {subcatAberta === sub
                                 ? <ChevronDown size={14} className="text-slate-400" />
                                 : <ChevronRight size={14} className="text-slate-400" />
