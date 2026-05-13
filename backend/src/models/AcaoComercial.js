@@ -6,6 +6,7 @@ const acaoComercialSchema = new mongoose.Schema({
     enum: ['encarte', 'oferta_interna', 'rebaixa'],
     required: true,
   },
+  encarte_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Encarte', default: null },
   ean: { type: String, required: true },
   cod_interno: { type: String, default: '' },
   produto: { type: String, required: true },

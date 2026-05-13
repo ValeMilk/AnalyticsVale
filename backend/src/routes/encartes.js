@@ -1,7 +1,29 @@
 import { Router } from 'express';
 import Encarte from '../models/Encarte.js';
+import AcaoComercial from '../models/AcaoComercial.js';
 
 const router = Router();
+
+// Cria (ou recria) as ações comerciais vinculadas a um encarte
+async function syncAcoes(encarte) {
+  await AcaoComercial.deleteMany({ encarte_id: encarte._id });
+  if (!encarte.itens?.length) return;
+  const docs = encarte.itens.map(item => ({
+    tipo: 'encarte',
+    encarte_id: encarte._id,
+    ean: item.ean,
+    cod_interno: item.cod_interno || '',
+    produto: item.produto,
+    preco_normal: null,
+    preco_acao: item.preco_oferta,
+    data_inicio: encarte.data_inicio,
+    data_fim: encarte.data_fim,
+    vendor: encarte.vendor,
+    observacao: encarte.titulo,
+    ativo: true,
+  }));
+  await AcaoComercial.insertMany(docs);
+}
 
 // GET /api/encartes — listar todos (mais recentes primeiro)
 router.get('/', async (req, res) => {
@@ -28,6 +50,7 @@ router.post('/', async (req, res) => {
     }
     const encarte = new Encarte({ titulo, data_inicio, data_fim, vendor, itens, observacao });
     await encarte.save();
+    await syncAcoes(encarte);
     res.status(201).json({ status: 'success', data: encarte });
   } catch (err) {
     console.error('❌ POST /api/encartes:', err);
@@ -40,6 +63,7 @@ router.put('/:id', async (req, res) => {
   try {
     const encarte = await Encarte.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     if (!encarte) return res.status(404).json({ status: 'error', error: 'Encarte não encontrado' });
+    await syncAcoes(encarte);
     res.json({ status: 'success', data: encarte });
   } catch (err) {
     console.error('❌ PUT /api/encartes/:id:', err);
@@ -50,7 +74,8 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/encartes/:id — excluir encarte
 router.delete('/:id', async (req, res) => {
   try {
-    await Encarte.findByIdAndDelete(req.params.id);
+    const encarte = await Encarte.findByIdAndDelete(req.params.id);
+    if (encarte) await AcaoComercial.deleteMany({ encarte_id: encarte._id });
     res.json({ status: 'success' });
   } catch (err) {
     console.error('❌ DELETE /api/encartes/:id:', err);
