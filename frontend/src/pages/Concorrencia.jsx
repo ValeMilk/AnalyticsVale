@@ -99,11 +99,8 @@ export default function Concorrencia() {
   const [searchDebounced, setSearchDebounced] = useState('');
   const [redeSel] = useState('COMETA'); // sempre filtrado por COMETA
   const [somenteConflito, setSomenteConflito] = useState(false);
-  // Período padrão: últimos 90 dias
-  const hoje = new Date().toISOString().slice(0, 10);
-  const noventaDias = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const [dataInicio, setDataInicio] = useState(noventaDias);
-  const [dataFim, setDataFim] = useState(hoje);
+  const [dataInicio, setDataInicio] = useState('');
+  const [dataFim, setDataFim] = useState('');
   const debounceRef = useRef(null);
 
   // Debounce na busca: só dispara request 600ms após parar de digitar
