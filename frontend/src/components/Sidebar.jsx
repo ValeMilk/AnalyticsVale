@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, ShoppingCart, Bell, Tag, BarChart3, ChevronLeft, ChevronRight, Newspaper } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Bell, Tag, BarChart3, ChevronLeft, ChevronRight, Newspaper, Store } from 'lucide-react';
 
 const links = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -8,6 +8,7 @@ const links = [
   { to: '/alertas', label: 'Alertas', icon: Bell },
   { to: '/acoes', label: 'Ações Comerciais', icon: Tag },
   { to: '/encartes', label: 'Encartes', icon: Newspaper },
+  { to: '/concorrencia', label: 'Concorrência', icon: Store },
 ];
 
 export default function Sidebar({ collapsed, onToggle }) {

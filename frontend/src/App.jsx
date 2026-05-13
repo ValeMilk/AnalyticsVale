@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, Routes, Route } from 'react-router-dom';
-import { LayoutDashboard, ShoppingCart, Bell, Tag, BarChart3, Newspaper } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Bell, Tag, BarChart3, Newspaper, Store } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import Vendas from './pages/Vendas';
@@ -8,12 +8,13 @@ import Alertas from './pages/Alertas';
 import Acoes from './pages/Acoes';
 import AcoesAnalise from './pages/AcoesAnalise';
 import Encartes from './pages/Encartes';
+import Concorrencia from './pages/Concorrencia';
 
 const BOTTOM_NAV = [
   { to: '/', label: 'Home', icon: LayoutDashboard },
   { to: '/acoes-analise', label: 'Análise', icon: BarChart3 },
   { to: '/encartes', label: 'Encartes', icon: Newspaper },
-  { to: '/vendas', label: 'Vendas', icon: ShoppingCart },
+  { to: '/concorrencia', label: 'Mercado', icon: Store },
   { to: '/acoes', label: 'Ações', icon: Tag },
 ];
 
@@ -37,6 +38,7 @@ export default function App() {
           <Route path="/acoes" element={<Acoes />} />
           <Route path="/acoes-analise" element={<AcoesAnalise />} />
           <Route path="/encartes" element={<Encartes />} />
+          <Route path="/concorrencia" element={<Concorrencia />} />
         </Routes>
       </main>
 

@@ -16,4 +16,8 @@ export default {
     estoqueMinimo: parseInt(process.env.ESTOQUE_MINIMO) || 50,
     quedaVendasPercent: parseInt(process.env.QUEDA_VENDAS_PERCENT) || 15,
   },
+  infomarket: {
+    url: process.env.INFOMARKET_URL || 'http://72.61.62.17:8000',
+    token: process.env.INFOMARKET_TOKEN || '',
+  },
 };
