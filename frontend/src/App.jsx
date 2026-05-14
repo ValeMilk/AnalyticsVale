@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, Routes, Route } from 'react-router-dom';
+import { NavLink, Routes, Route, Navigate } from 'react-router-dom';
 import { LayoutDashboard, ShoppingCart, Bell, Tag, BarChart3, Newspaper, Store } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
@@ -9,6 +9,10 @@ import Acoes from './pages/Acoes';
 import AcoesAnalise from './pages/AcoesAnalise';
 import Encartes from './pages/Encartes';
 import Concorrencia from './pages/Concorrencia';
+import Admin from './pages/Admin';
+import Login from './pages/Login';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import LoadingSpinner from './components/LoadingSpinner';
 
 const BOTTOM_NAV = [
   { to: '/', label: 'Home', icon: LayoutDashboard },
@@ -18,8 +22,21 @@ const BOTTOM_NAV = [
   { to: '/acoes', label: 'Ações', icon: Tag },
 ];
 
-export default function App() {
+function PrivateRoute({ children, adminOnly = false }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="flex items-center justify-center min-h-screen"><LoadingSpinner /></div>;
+  if (!user) return <Navigate to="/login" replace />;
+  if (adminOnly && user.role !== 'admin') return <Navigate to="/" replace />;
+  return children;
+}
+
+function AppShell() {
+  const { user, loading } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
+
+  if (loading) return <div className="flex items-center justify-center min-h-screen bg-cometa-bg"><LoadingSpinner /></div>;
+  if (!user) return <Login />;
+
   return (
     <div className="flex min-h-screen bg-cometa-bg">
       {/* Sidebar — oculta no mobile */}
@@ -39,6 +56,12 @@ export default function App() {
           <Route path="/acoes-analise" element={<AcoesAnalise />} />
           <Route path="/encartes" element={<Encartes />} />
           <Route path="/concorrencia" element={<Concorrencia />} />
+          <Route path="/admin" element={
+            <PrivateRoute adminOnly>
+              <Admin />
+            </PrivateRoute>
+          } />
+          <Route path="/login" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
 
@@ -70,4 +93,28 @@ export default function App() {
       </nav>
     </div>
   );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppRoutes />
+    </AuthProvider>
+  );
+}
+
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginRoute />} />
+      <Route path="/*" element={<AppShell />} />
+    </Routes>
+  );
+}
+
+function LoginRoute() {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="flex items-center justify-center min-h-screen bg-cometa-bg"><LoadingSpinner /></div>;
+  if (user) return <Navigate to="/" replace />;
+  return <Login />;
 }

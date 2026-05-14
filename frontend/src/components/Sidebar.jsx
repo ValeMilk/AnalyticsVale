@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, ShoppingCart, Bell, Tag, BarChart3, ChevronLeft, ChevronRight, Newspaper, Store } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Bell, Tag, BarChart3, ChevronLeft, ChevronRight, Newspaper, Store, ShieldCheck, LogOut } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 const links = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -12,6 +13,8 @@ const links = [
 ];
 
 export default function Sidebar({ collapsed, onToggle }) {
+  const { user, logout } = useAuth();
+
   return (
     <aside className={`fixed left-0 top-0 h-screen ${collapsed ? 'w-16' : 'w-64'} bg-royal border-r border-royal/30 flex flex-col z-50 transition-all duration-300 overflow-hidden`}>
       {/* Header */}
@@ -35,7 +38,7 @@ export default function Sidebar({ collapsed, onToggle }) {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 p-2 space-y-1">
+      <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
         {links.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
@@ -56,19 +59,48 @@ export default function Sidebar({ collapsed, onToggle }) {
             {!collapsed && label}
           </NavLink>
         ))}
+
+        {/* Link Admin — apenas para admins */}
+        {user?.role === 'admin' && (
+          <NavLink
+            to="/admin"
+            title={collapsed ? 'Administração' : undefined}
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
+                collapsed ? 'justify-center' : ''
+              } ${
+                isActive
+                  ? 'bg-white/20 text-white border border-white/30'
+                  : 'text-white/70 hover:text-white hover:bg-white/10'
+              }`
+            }
+          >
+            <ShieldCheck size={20} className="shrink-0" />
+            {!collapsed && 'Administração'}
+          </NavLink>
+        )}
       </nav>
 
-      {/* Footer */}
-      <div className="p-3 border-t border-white/20">
-        {collapsed ? (
+      {/* Footer — usuário + logout */}
+      <div className="p-3 border-t border-white/20 space-y-2">
+        {!collapsed && user && (
+          <div className="px-3 py-2 rounded-xl bg-white/10 border border-white/20">
+            <p className="text-xs text-white/60 truncate">{user.nome}</p>
+            <p className="text-xs text-white/40 truncate">@{user.username}</p>
+          </div>
+        )}
+        <button
+          onClick={logout}
+          title="Sair"
+          className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-white/60 hover:text-white hover:bg-white/10 text-sm font-medium transition-colors ${collapsed ? 'justify-center' : ''}`}
+        >
+          <LogOut size={18} className="shrink-0" />
+          {!collapsed && 'Sair'}
+        </button>
+        {collapsed && (
           <button onClick={onToggle} className="w-full flex justify-center text-white/50 hover:text-white p-2 rounded-lg hover:bg-white/10 transition" title="Expandir menu">
             <ChevronRight size={16} />
           </button>
-        ) : (
-          <div className="px-4 py-3 rounded-xl bg-white/10 border border-white/20">
-            <p className="text-xs text-white/60">Bandeiras</p>
-            <p className="text-sm font-medium text-white mt-1">Valemilk + Valefish</p>
-          </div>
         )}
       </div>
     </aside>
