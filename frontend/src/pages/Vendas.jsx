@@ -1,219 +1,207 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Search } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../api/client';
-import Filters from '../components/Filters';
-import LoadingSpinner from '../components/LoadingSpinner';
+import { useTituloDaPagina } from '../context/PaginaContext';
+import { AppHeader } from '../components/layout/AppHeader';
+import { FiltrosDeVendas } from '../components/filtros/FiltrosDeVendas';
+import { SearchInput } from '../components/filtros/SearchInput';
+import { ROTULO_BANDEIRA } from '../components/filtros/Segmentado';
+import { TabelaDeDados } from '../components/tabela/TabelaDeDados';
+import { useTabelaDeDados } from '../components/tabela/useTabelaDeDados';
+import { GerenciadorDeColunas } from '../components/tabela/GerenciadorDeColunas';
+import { MenuExportar } from '../components/tabela/MenuExportar';
+import { Badge } from '../components/ui/Badge';
+import { BadgeDeTipoDeAcao } from '../components/BadgeDeTipoDeAcao';
+import { ROTULO_TIPO_ACAO, normEan } from '../config/acoes';
+import { fmtData, fmtMoeda, hojeLocal, soData, somarDias } from '../lib/formatar';
 
-const fmt = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-const ACAO_COLORS = {
-  encarte: { bg: 'bg-blue-500/10', border: 'border-l-blue-500', label: 'Encarte', dot: 'bg-blue-400' },
-  oferta_interna: { bg: 'bg-green-500/10', border: 'border-l-green-500', label: 'Oferta Interna', dot: 'bg-green-400' },
-  rebaixa: { bg: 'bg-orange-500/10', border: 'border-l-orange-500', label: 'Rebaixa', dot: 'bg-orange-400' },
+// Barra lateral colorida por tipo de ação (via variável CSS dos tokens)
+const CLASSE_LINHA_POR_TIPO = {
+  encarte: '[&>td:first-child]:shadow-[inset_4px_0_0_var(--acao-encarte)]',
+  oferta_interna: '[&>td:first-child]:shadow-[inset_4px_0_0_var(--acao-oferta-interna)]',
+  rebaixa: '[&>td:first-child]:shadow-[inset_4px_0_0_var(--acao-rebaixa)]',
 };
 
-function defaultFilters() {
-  const hoje = new Date();
-  const trintaDias = new Date(hoje);
-  trintaDias.setDate(hoje.getDate() - 30);
-  return {
-    data_inicio: trintaDias.toISOString().slice(0, 10),
-    data_fim: hoje.toISOString().slice(0, 10),
-    vendor: 'ambos',
-  };
+// Ação vigente para uma venda (data dentro do período + mesmo código interno ou EAN)
+function acaoDaVenda(venda, acoes) {
+  const dataVenda = soData(venda.data);
+  if (!dataVenda) return null;
+  const codVenda = venda.cod_interno != null ? String(venda.cod_interno).trim() : '';
+  const eanVenda = normEan(venda.ean);
+  return (
+    acoes.find((a) => {
+      const ini = soData(a.data_inicio);
+      const fim = soData(a.data_fim);
+      if (!ini || !fim || !(ini <= dataVenda && fim >= dataVenda)) return false;
+      const codAcao = a.cod_interno != null ? String(a.cod_interno).trim() : '';
+      if (codVenda && codAcao && codVenda === codAcao) return true;
+      const eanAcao = normEan(a.ean);
+      return Boolean(eanVenda && eanAcao && eanVenda === eanAcao);
+    }) || null
+  );
 }
 
+function montarColunas(acoes) {
+  return [
+    { id: 'data', tipo: 'data', rotulo: 'Data', fixa: true, larguraClasse: 'w-28', papelNoCartao: 'etiqueta', valor: (v) => soData(v.data), renderizar: (v) => fmtData(v.data) },
+    { id: 'produto', tipo: 'texto', rotulo: 'Produto', fixa: true, larguraClasse: 'min-w-56', papelNoCartao: 'titulo', valor: (v) => v.produto },
+    { id: 'loja', tipo: 'categoria', rotulo: 'Loja', comBusca: true, valor: (v) => v.nome_loja },
+    {
+      id: 'bandeira',
+      tipo: 'categoria',
+      rotulo: 'Bandeira',
+      valor: (v) => v.bandeira,
+      renderizar: (v) => <Badge variant={v.bandeira === 'Valemilk' ? 'info' : 'neutro'}>{v.bandeira}</Badge>,
+    },
+    {
+      id: 'acao',
+      tipo: 'categoria',
+      rotulo: 'Ação',
+      ajuda: 'Ação comercial em vigor na data da venda para este produto',
+      papelNoCartao: 'status',
+      valor: (v) => {
+        const a = acaoDaVenda(v, acoes);
+        return a ? ROTULO_TIPO_ACAO[a.tipo] ?? a.tipo : null;
+      },
+      renderizar: (v) => {
+        const a = acaoDaVenda(v, acoes);
+        return a ? <BadgeDeTipoDeAcao tipo={a.tipo} /> : <span className="text-neutral-400">-</span>;
+      },
+    },
+    { id: 'ean', tipo: 'texto', rotulo: 'EAN', escondeNoCelular: true, valor: (v) => normEan(v.ean) },
+    { id: 'cod_interno', tipo: 'texto', rotulo: 'Código', padrao: false, valor: (v) => (v.cod_interno != null ? String(v.cod_interno) : null) },
+    { id: 'qtd', tipo: 'numero', rotulo: 'Qtd', formato: 'quantidade', valor: (v) => Number(v.qtd) },
+    { id: 'venda', tipo: 'numero', rotulo: 'Venda', formato: 'moeda', valor: (v) => Number(v.venda) },
+    { id: 'custo', tipo: 'numero', rotulo: 'Custo', formato: 'moeda', escondeNoCelular: true, valor: (v) => (v.custo == null ? null : Number(v.custo)) },
+    {
+      id: 'margem',
+      tipo: 'numero',
+      rotulo: 'Sell In',
+      formato: 'moeda',
+      ajuda: 'Venda menos o custo informado na linha',
+      valor: (v) => Number(v.venda || 0) - Number(v.custo || 0),
+    },
+  ];
+}
+
+const ORDENACAO_PADRAO = { colunaId: 'data', direcao: 'desc' };
+
 export default function Vendas() {
-  const [filters, setFilters] = useState(defaultFilters);
+  useTituloDaPagina('Vendas', 'Vendas diárias por loja e produto');
+
+  const padrao = useMemo(() => ({ data_inicio: somarDias(hojeLocal(), -30), data_fim: hojeLocal(), vendor: 'ambos', eans: [], loja_ids: [] }), []);
+  const [filtros, setFiltros] = useState(padrao);
+  const [busca, setBusca] = useState('');
   const [vendas, setVendas] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(null);
   const [acoes, setAcoes] = useState([]);
-  const [acoesLoaded, setAcoesLoaded] = useState(false);
   const [produtos, setProdutos] = useState([]);
+  const [lojas, setLojas] = useState([]);
 
   useEffect(() => {
-    api.get('/produtos').then(r => setProdutos(r.data.data || [])).catch(() => {});
+    api.get('/produtos').then((r) => setProdutos(r.data.data || [])).catch(() => {});
+    api.get('/lojas').then((r) => setLojas(r.data.data || [])).catch(() => {});
+    api.get('/acoes').then((r) => setAcoes(r.data.data || [])).catch(() => {});
   }, []);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+  const carregar = useCallback(async () => {
+    setCarregando(true);
+    setErro(null);
     try {
       const params = new URLSearchParams();
-      if (filters.data_inicio) params.set('data_inicio', filters.data_inicio);
-      if (filters.data_fim) params.set('data_fim', filters.data_fim);
-      if (filters.vendor) params.set('vendor', filters.vendor);
-      if (filters.eans?.length) filters.eans.forEach(e => params.append('eans[]', e));
-      if (filters.loja_ids?.length) filters.loja_ids.forEach(l => params.append('loja_ids[]', l));
+      if (filtros.data_inicio) params.set('data_inicio', filtros.data_inicio);
+      if (filtros.data_fim) params.set('data_fim', filtros.data_fim);
+      if (filtros.vendor) params.set('vendor', filtros.vendor);
+      filtros.eans?.forEach((e) => params.append('eans[]', e));
+      filtros.loja_ids?.forEach((l) => params.append('loja_ids[]', l));
       const { data } = await api.get(`/vendas?${params.toString()}`);
       setVendas(data.data || []);
     } catch (err) {
-      console.error('Erro ao carregar vendas:', err);
+      setErro(err.response?.data?.error || err.message);
     } finally {
-      setLoading(false);
+      setCarregando(false);
     }
-  }, [filters]);
+  }, [filtros]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  // Carrega ações comerciais para highlight
   useEffect(() => {
-    api.get('/acoes').then(res => { setAcoes(res.data.data || []); setAcoesLoaded(true); }).catch(() => setAcoesLoaded(true));
-  }, []);
+    carregar();
+  }, [carregar]);
 
-  // Verifica se uma venda (data + cod_interno) cai dentro de alguma ação
-  const getAcaoParaVenda = (venda) => {
-    const dataVenda = venda.data?.slice(0, 10);
-    if (!dataVenda) return null;
-    const codVenda = venda.cod_interno?.toString().trim();
-    const eanVenda = venda.ean?.replace(/,/g, '').trim();
-    return acoes.find(a => {
-      const ini = a.data_inicio?.slice(0, 10);
-      const ending = a.data_fim?.slice(0, 10);
-      if (!(ini <= dataVenda && ending >= dataVenda)) return false;
-      // Match por cod_interno (preferido) ou EAN normalizado
-      const codAcao = a.cod_interno?.toString().trim();
-      if (codVenda && codAcao && codVenda === codAcao) return true;
-      const eanAcao = a.ean?.replace(/,/g, '').trim();
-      return eanVenda && eanAcao && eanVenda === eanAcao;
-    }) || null;
-  };
+  const colunas = useMemo(() => montarColunas(acoes), [acoes]);
 
-  const filtered = vendas.filter((v) => {
-    return !search || v.produto?.toLowerCase().includes(search.toLowerCase()) || v.ean?.includes(search);
-  });
+  const linhas = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    if (!q) return vendas;
+    return vendas.filter((v) => v.produto?.toLowerCase().includes(q) || normEan(v.ean).includes(q) || String(v.cod_interno ?? '').includes(q));
+  }, [vendas, busca]);
 
-  if (loading || !acoesLoaded) return <LoadingSpinner />;
+  const tabela = useTabelaDeDados({ linhas, colunas, ordenacaoPadrao: ORDENACAO_PADRAO, baseDasOpcoes: vendas, passo: 100 });
+
+  const totais = useCallback(
+    (lista) =>
+      lista.reduce(
+        (acc, v) => {
+          acc.qtd += Number(v.qtd || 0);
+          acc.venda += Number(v.venda || 0);
+          acc.custo += Number(v.custo || 0);
+          acc.margem += Number(v.venda || 0) - Number(v.custo || 0);
+          return acc;
+        },
+        { qtd: 0, venda: 0, custo: 0, margem: 0 }
+      ),
+    []
+  );
+  const totaisDaTela = useMemo(() => totais(tabela.linhasFiltradas), [tabela.linhasFiltradas, totais]);
+
+  const filtrosParaExportar = [
+    { rotulo: 'Período', valor: `${fmtData(filtros.data_inicio)} a ${fmtData(filtros.data_fim)}` },
+    { rotulo: 'Bandeira', valor: ROTULO_BANDEIRA[filtros.vendor] ?? filtros.vendor },
+    ...(busca ? [{ rotulo: 'Busca', valor: busca }] : []),
+  ];
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Vendas</h1>
-        <p className="text-slate-500 text-xs sm:text-sm mt-1">Dados consolidados de vendas diárias</p>
-      </div>
+    <div className="flex flex-col gap-6">
+      <AppHeader
+        filters={<p className="text-sm text-neutral-500">Até 1.000 linhas por bandeira, mais recentes primeiro. Restrinja o período ou os produtos para ver tudo.</p>}
+        actionsSlot={
+          <>
+            <MenuExportar titulo="Vendas" filtros={filtrosParaExportar} tabela={tabela} linhasCompletas={vendas} totais={totais} desabilitado={carregando || !vendas.length} />
+            <GerenciadorDeColunas {...tabela.propsDoGerenciador} />
+          </>
+        }
+      />
 
-      {/* Filtros */}
-      <Filters filters={filters} onChange={setFilters} produtos={produtos} />
+      <FiltrosDeVendas
+        telaId="vendas"
+        filtros={filtros}
+        onChange={setFiltros}
+        padrao={padrao}
+        produtos={produtos}
+        lojas={lojas}
+        slotFixo={<SearchInput value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar produto, EAN ou código..." />}
+      />
 
-      <div className="flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-0">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Buscar produto ou EAN..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-royal"
-          />
-        </div>
-      </div>
-
-      {/* Legenda */}
-      <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
-        <span>Legenda:</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-500/30 border-l-2 border-blue-500" /> Encarte</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500/30 border-l-2 border-green-500" /> Oferta Interna</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500/30 border-l-2 border-orange-500" /> Rebaixa</span>
-      </div>
-
-      {/* Mobile: cards */}
-      <div className="sm:hidden space-y-2">
-        {filtered.slice(0, 200).map((v, i) => {
-          const margem = (Number(v.venda) || 0) - (Number(v.custo) || 0);
-          const acaoAtiva = getAcaoParaVenda(v);
-          const cor = acaoAtiva ? ACAO_COLORS[acaoAtiva.tipo] : null;
-          return (
-            <div key={i} className={`bg-white rounded-xl border p-3 shadow-sm ${cor ? `border-l-4 ${cor.border} ${cor.bg}` : 'border-slate-200'}`}>
-              <div className="flex items-start justify-between gap-2 mb-1.5">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-slate-900 truncate">{v.produto}</p>
-                  <p className="text-xs text-slate-400">{v.data?.slice(0, 10)} · {v.nome_loja}</p>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {cor && <span className={`w-2 h-2 rounded-full ${cor.dot}`} />}
-                  <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${v.bandeira === 'Valemilk' ? 'bg-royal/10 text-royal' : 'bg-cyan-500/10 text-cyan-600'}`}>
-                    {v.bandeira}
-                  </span>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                <div>
-                  <p className="text-slate-400">Qtd</p>
-                  <p className="font-semibold text-slate-700">{v.qtd}</p>
-                </div>
-                <div>
-                  <p className="text-slate-400">Venda</p>
-                  <p className="font-semibold text-slate-900">{fmt(v.venda)}</p>
-                </div>
-                <div>
-                  <p className="text-slate-400">Sell In</p>
-                  <p className={`font-semibold ${margem >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{fmt(margem)}</p>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        <p className="text-center text-xs text-slate-400 py-2">
-          {Math.min(filtered.length, 200)} de {filtered.length} registros
-        </p>
-      </div>
-
-      {/* Desktop: tabela */}
-      <div className="hidden sm:block bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-slate-500 border-b border-slate-200 bg-slate-50">
-                <th className="px-4 py-3">Data</th>
-                <th className="px-4 py-3">Loja</th>
-                <th className="px-4 py-3">Bandeira</th>
-                <th className="px-4 py-3">Produto</th>
-                <th className="px-4 py-3">EAN</th>
-                <th className="px-4 py-3 text-right">Qtd</th>
-                <th className="px-4 py-3 text-right">Venda</th>
-                <th className="px-4 py-3 text-right">Custo</th>
-                <th className="px-4 py-3 text-right">Sell In</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.slice(0, 200).map((v, i) => {
-                const margem = (Number(v.venda) || 0) - (Number(v.custo) || 0);
-                const acaoAtiva = getAcaoParaVenda(v);
-                const cor = acaoAtiva ? ACAO_COLORS[acaoAtiva.tipo] : null;
-                return (
-                  <tr key={i} className={`border-b border-slate-100 transition-colors ${cor ? `${cor.bg} border-l-4 ${cor.border}` : 'hover:bg-slate-50'}`}>
-                    <td className="px-4 py-3 text-slate-600">
-                      <div className="flex items-center gap-2">
-                        {v.data?.slice(0, 10)}
-                        {cor && <span className={`w-2 h-2 rounded-full ${cor.dot}`} title={cor.label} />}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-slate-900">{v.nome_loja}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${
-                        v.bandeira === 'Valemilk' ? 'bg-royal/10 text-royal' : 'bg-cyan-500/10 text-cyan-600'
-                      }`}>
-                        {v.bandeira}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-slate-900 max-w-[200px] truncate">{v.produto}</td>
-                    <td className="px-4 py-3 text-slate-400 text-xs">{v.ean}</td>
-                    <td className="px-4 py-3 text-right text-slate-600">{v.qtd}</td>
-                    <td className="px-4 py-3 text-right text-slate-900 font-medium">{fmt(v.venda)}</td>
-                    <td className="px-4 py-3 text-right text-slate-500">{fmt(v.custo)}</td>
-                    <td className={`px-4 py-3 text-right font-medium ${margem >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                      {fmt(margem)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <div className="px-4 py-3 border-t border-slate-200 text-xs text-slate-400">
-          Exibindo {Math.min(filtered.length, 200)} de {filtered.length} registros
-        </div>
-      </div>
+      <TabelaDeDados
+        tabela={tabela}
+        chaveDaLinha={(v, i) => `${v.data}-${v.loja_id}-${v.ean}-${v.plu ?? ''}-${i ?? ''}`}
+        classeDaLinha={(v) => {
+          const a = acaoDaVenda(v, acoes);
+          return a ? CLASSE_LINHA_POR_TIPO[a.tipo] : undefined;
+        }}
+        carregando={carregando}
+        erro={erro}
+        aoTentarNovamente={carregar}
+        temFiltroDeTela={Boolean(busca)}
+        onLimparFiltrosDeTela={() => setBusca('')}
+        fixarPrimeiraColuna
+        totais={{
+          qtd: totaisDaTela.qtd.toLocaleString('pt-BR', { maximumFractionDigits: 2 }),
+          venda: fmtMoeda(totaisDaTela.venda),
+          custo: fmtMoeda(totaisDaTela.custo),
+          margem: fmtMoeda(totaisDaTela.margem),
+        }}
+        vazio={{ mensagemVazio: 'Nenhuma venda no período', mensagemFiltrada: 'Nenhuma venda corresponde aos filtros' }}
+      />
     </div>
   );
 }

@@ -1,243 +1,367 @@
-import { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, X, ShieldCheck, User, Check } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Loader2, MoreHorizontal, Pencil, Plus, ShieldCheck, Trash2, User, UserCheck, UserX } from 'lucide-react';
 import api from '../api/client';
-import { useAuth } from '../context/AuthContext';
-import LoadingSpinner from '../components/LoadingSpinner';
+import { useAuth, useResourceGuard } from '../context/AuthContext';
+import { useTituloDaPagina } from '../context/PaginaContext';
+import { RestrictedAccess } from '../components/RestrictedAccess';
+import { AppHeader } from '../components/layout/AppHeader';
+import { PainelDeFiltros, CampoDeFiltro, filtrosAtivos } from '../components/filtros/PainelDeFiltros';
+import { SearchInput } from '../components/filtros/SearchInput';
+import { TabelaDeDados } from '../components/tabela/TabelaDeDados';
+import { useTabelaDeDados } from '../components/tabela/useTabelaDeDados';
+import { Button } from '../components/ui/Button';
+import { Badge } from '../components/ui/Badge';
+import { Input } from '../components/ui/Input';
+import { Select } from '../components/ui/Select';
+import { Switch } from '../components/ui/Switch';
+import { Label } from '../components/ui/Label';
+import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter } from '../components/ui/Dialog';
+import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '../components/ui/DropdownMenu';
+import { useToast } from '../components/ui/Toast';
+import { ConfirmarExclusaoDialog } from '../components/dialogos/ConfirmarExclusaoDialog';
+import { CampoDeFormulario } from '../components/formulario/CampoDeFormulario';
+import { useFormulario } from '../components/formulario/useFormulario';
+import { fmtData, iniciais, soData } from '../lib/formatar';
+import { cn } from '../lib/cn';
 
-function UserModal({ user, onClose, onSave }) {
-  const isEdit = !!user?._id;
-  const [form, setForm] = useState({
-    nome: user?.nome || '',
-    username: user?.username || '',
-    password: '',
-    role: user?.role || 'user',
-    ativo: user?.ativo ?? true,
-  });
-  const [saving, setSaving] = useState(false);
-  const [erro, setErro] = useState('');
+function montarColunas({ meuId, onEditar, onAlternarAtivo, onRemover }) {
+  return [
+    {
+      id: 'nome',
+      tipo: 'texto',
+      rotulo: 'Usuário',
+      fixa: true,
+      larguraClasse: 'min-w-56',
+      valor: (u) => u.nome,
+      renderizar: (u) => (
+        <div className="flex items-center gap-3">
+          <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-md text-xs font-bold', u.role === 'admin' ? 'bg-secondary/10 text-secondary' : 'bg-neutral-100 text-neutral-500')} aria-hidden>
+            {u.role === 'admin' ? <ShieldCheck className="size-4" /> : iniciais(u.nome) || <User className="size-4" />}
+          </span>
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
+              <span className="truncate">{u.nome}</span>
+              {u._id === meuId && <Badge variant="info">você</Badge>}
+            </p>
+            <p className="text-xs text-neutral-400">@{u.username}</p>
+          </div>
+        </div>
+      ),
+    },
+    { id: 'username', tipo: 'texto', rotulo: 'Login', padrao: false, escondeNoCelular: true, valor: (u) => u.username },
+    {
+      id: 'role',
+      tipo: 'categoria',
+      rotulo: 'Perfil',
+      valor: (u) => (u.role === 'admin' ? 'Admin' : 'Usuário'),
+      renderizar: (u) => <Badge variant={u.role === 'admin' ? 'secondary' : 'neutro'}>{u.role === 'admin' ? 'Admin' : 'Usuário'}</Badge>,
+    },
+    {
+      id: 'ativo',
+      tipo: 'categoria',
+      rotulo: 'Status',
+      papelNoCartao: 'status',
+      valor: (u) => (u.ativo ? 'Ativo' : 'Inativo'),
+      renderizar: (u) => <Badge variant={u.ativo ? 'sucesso' : 'neutro'}>{u.ativo ? 'Ativo' : 'Inativo'}</Badge>,
+    },
+    { id: 'createdAt', tipo: 'data', rotulo: 'Criado em', valor: (u) => soData(u.createdAt), renderizar: (u) => fmtData(u.createdAt) },
+    {
+      id: 'acoes',
+      tipo: 'custom',
+      rotulo: 'Ações',
+      ordenavel: false,
+      larguraClasse: 'w-12',
+      alinhamento: 'right',
+      renderizar: (u) => {
+        const souEu = u._id === meuId;
+        return (
+          <DropdownMenu
+            trigger={
+              <Button variant="ghost" size="icon-sm" aria-label={`Ações de ${u.nome}`}>
+                <MoreHorizontal />
+              </Button>
+            }
+          >
+            <DropdownMenuItem onSelect={() => onEditar(u)}>
+              <Pencil /> Editar
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onAlternarAtivo(u)} disabled={souEu}>
+              {u.ativo ? <UserX /> : <UserCheck />} {u.ativo ? 'Inativar' : 'Reativar'}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onSelect={() => onRemover(u)} disabled={souEu}>
+              <Trash2 /> Remover
+            </DropdownMenuItem>
+          </DropdownMenu>
+        );
+      },
+    },
+  ];
+}
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setErro('');
-    setSaving(true);
+// ─── Formulário ──────────────────────────────────────────────────────────────
+function validar(v, editando) {
+  const erros = {};
+  if (!v.nome.trim() || v.nome.trim().length < 2) erros.nome = 'Informe o nome completo.';
+  if (!v.username.trim()) erros.username = 'Informe o nome de usuário.';
+  else if (!/^[a-z0-9._-]+$/i.test(v.username.trim())) erros.username = 'Use apenas letras, números, ponto, hífen ou sublinhado.';
+  if (!editando && !v.password) erros.password = 'Informe uma senha.';
+  if (v.password && v.password.length < 6) erros.password = 'A senha deve ter no mínimo 6 caracteres.';
+  return erros;
+}
+
+function FormularioDeUsuario({ open, onOpenChange, usuario, onSalvo }) {
+  const editando = Boolean(usuario?._id);
+  const valoresIniciais = useMemo(
+    () => ({ nome: usuario?.nome || '', username: usuario?.username || '', password: '', role: usuario?.role || 'user', ativo: usuario?.ativo ?? true }),
+    [usuario]
+  );
+  const form = useFormulario({ valoresIniciais, validar: (v) => validar(v, editando) });
+  const { resetar } = form;
+
+  useEffect(() => {
+    if (open) resetar(valoresIniciais);
+  }, [open, valoresIniciais, resetar]);
+
+  const salvar = async (v) => {
+    const payload = { ...v, nome: v.nome.trim(), username: v.username.trim() };
+    if (!payload.password) delete payload.password; // não altera a senha se o campo ficou vazio
     try {
-      const payload = { ...form };
-      if (!payload.password) delete payload.password; // não altera senha se campo vazio na edição
-      if (isEdit) {
-        await api.put(`/users/${user._id}`, payload);
-      } else {
-        if (!payload.password) { setErro('Informe uma senha'); setSaving(false); return; }
-        await api.post('/users', payload);
-      }
-      onSave();
+      if (editando) await api.put(`/users/${usuario._id}`, payload);
+      else await api.post('/users', payload);
+      onSalvo(editando);
     } catch (err) {
-      setErro(err.response?.data?.error || err.message);
-    } finally {
-      setSaving(false);
+      form.setErros({ _geral: err.response?.data?.error || err.message });
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h2 className="text-base font-bold text-slate-900">{isEdit ? 'Editar Usuário' : 'Novo Usuário'}</h2>
-          <button onClick={onClose} className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
-            <X size={18} />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Nome completo *</label>
-            <input type="text" value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} required
-              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:border-royal focus:outline-none" />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Username *</label>
-            <input type="text" value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} required
-              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:border-royal focus:outline-none" />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-              Senha {isEdit && <span className="text-slate-400 normal-case font-normal">(deixe em branco para não alterar)</span>}
-            </label>
-            <input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-              placeholder={isEdit ? '••••••••' : 'Nova senha'}
-              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:border-royal focus:outline-none" />
-          </div>
+    <Dialog open={open} onOpenChange={onOpenChange} tamanho="sm">
+      <DialogHeader onClose={() => onOpenChange(false)}>
+        <DialogTitle>{editando ? 'Editar usuário' : 'Novo usuário'}</DialogTitle>
+        <DialogDescription>Acesso ao painel. Administradores também gerenciam usuários.</DialogDescription>
+      </DialogHeader>
+      <form onSubmit={form.submeter(salvar)} noValidate className="flex min-h-0 flex-1 flex-col">
+        <DialogBody className="flex flex-col gap-4">
+          <CampoDeFormulario rotulo="Nome completo" htmlFor="usr-nome" obrigatorio erro={form.erros.nome}>
+            <Input id="usr-nome" autoComplete="off" className="bg-neutral-50" {...form.propsDoCampo('nome')} />
+          </CampoDeFormulario>
+          <CampoDeFormulario rotulo="Nome de usuário" htmlFor="usr-username" obrigatorio erro={form.erros.username}>
+            <Input id="usr-username" autoComplete="off" className="bg-neutral-50" {...form.propsDoCampo('username')} />
+          </CampoDeFormulario>
+          <CampoDeFormulario rotulo="Senha" htmlFor="usr-senha" obrigatorio={!editando} erro={form.erros.password} ajuda={editando ? 'Deixe em branco para não alterar.' : undefined}>
+            <Input id="usr-senha" type="password" autoComplete="new-password" placeholder={editando ? '••••••••' : 'Nova senha'} className="bg-neutral-50" {...form.propsDoCampo('password')} />
+          </CampoDeFormulario>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Perfil</label>
-              <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
-                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:border-royal focus:outline-none">
+            <CampoDeFormulario rotulo="Perfil" htmlFor="usr-role">
+              <Select id="usr-role" className="bg-neutral-50" {...form.propsDoCampo('role')}>
                 <option value="user">Usuário</option>
                 <option value="admin">Admin</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Status</label>
-              <select value={form.ativo ? 'ativo' : 'inativo'} onChange={e => setForm(f => ({ ...f, ativo: e.target.value === 'ativo' }))}
-                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:border-royal focus:outline-none">
-                <option value="ativo">Ativo</option>
-                <option value="inativo">Inativo</option>
-              </select>
-            </div>
+              </Select>
+            </CampoDeFormulario>
+            <CampoDeFormulario rotulo="Status">
+              <div className="flex h-10 items-center gap-2">
+                <Switch id="usr-ativo" checked={form.valores.ativo} onCheckedChange={(v) => form.definir('ativo', v)} />
+                <Label htmlFor="usr-ativo" className="text-sm text-neutral-700">
+                  {form.valores.ativo ? 'Ativo' : 'Inativo'}
+                </Label>
+              </div>
+            </CampoDeFormulario>
           </div>
-
-          {erro && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-2">{erro}</p>}
-
-          <div className="grid grid-cols-2 gap-3 pt-2">
-            <button type="button" onClick={onClose}
-              className="py-3 rounded-xl border-2 border-slate-200 text-slate-500 text-sm font-semibold hover:bg-slate-50 transition-colors">
-              Cancelar
-            </button>
-            <button type="submit" disabled={saving}
-              className="py-3 rounded-xl bg-royal text-white text-sm font-semibold disabled:opacity-50 hover:bg-royal/90 transition-colors">
-              {saving ? 'Salvando...' : 'Salvar'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+          {form.erros._geral && (
+            <p role="alert" className="rounded-sm border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+              {form.erros._geral}
+            </p>
+          )}
+        </DialogBody>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={form.enviando}>
+            Cancelar
+          </Button>
+          <Button type="submit" variant="secondary" disabled={form.enviando}>
+            {form.enviando && <Loader2 className="animate-spin" aria-hidden />}
+            {editando ? 'Salvar' : 'Cadastrar'}
+          </Button>
+        </DialogFooter>
+      </form>
+    </Dialog>
   );
 }
 
+// ─── Página ──────────────────────────────────────────────────────────────────
 export default function Admin() {
-  const { user: me } = useAuth();
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState(null); // null | 'new' | user object
-  const [confirmDel, setConfirmDel] = useState(null);
+  useTituloDaPagina('Administração', 'Usuários com acesso ao painel');
+  const guard = useResourceGuard('usuarios');
+  const { user: eu } = useAuth();
+  const { notificar } = useToast();
 
-  const carregar = async () => {
-    setLoading(true);
+  const [usuarios, setUsuarios] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(null);
+  const [busca, setBusca] = useState('');
+  const [mostrarInativos, setMostrarInativos] = useState(true);
+
+  const [formAberto, setFormAberto] = useState(false);
+  const [emEdicao, setEmEdicao] = useState(null);
+  const [aRemover, setARemover] = useState(null);
+  const [aAlternar, setAAlternar] = useState(null);
+  const [processando, setProcessando] = useState(false);
+
+  const carregar = useCallback(async () => {
+    setCarregando(true);
+    setErro(null);
     try {
       const r = await api.get('/users');
-      setUsers(r.data.data || []);
+      setUsuarios(r.data.data || []);
+    } catch (err) {
+      setErro(err.response?.data?.error || err.message);
     } finally {
-      setLoading(false);
+      setCarregando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (guard.canView) carregar();
+  }, [guard.canView, carregar]);
+
+  const linhas = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    return usuarios.filter((u) => {
+      if (!mostrarInativos && !u.ativo) return false;
+      if (q && !(u.nome?.toLowerCase().includes(q) || u.username?.toLowerCase().includes(q))) return false;
+      return true;
+    });
+  }, [usuarios, busca, mostrarInativos]);
+
+  const colunas = useMemo(
+    () =>
+      montarColunas({
+        meuId: eu?._id,
+        onEditar: (u) => {
+          setEmEdicao(u);
+          setFormAberto(true);
+        },
+        onAlternarAtivo: setAAlternar,
+        onRemover: setARemover,
+      }),
+    [eu?._id]
+  );
+  const tabela = useTabelaDeDados({ linhas, colunas, ordenacaoPadrao: { colunaId: 'createdAt', direcao: 'desc' }, baseDasOpcoes: usuarios, passo: null });
+
+  if (guard.isDenied) return <RestrictedAccess title="Administração" area="a administração de usuários" />;
+
+  const ativos = filtrosAtivos([!mostrarInativos && { id: 'inativos', rotulo: 'Ocultando inativos', onRemover: () => setMostrarInativos(true) }]);
+  const limparTudo = () => {
+    setMostrarInativos(true);
+    setBusca('');
+  };
+
+  const alternarAtivo = async () => {
+    if (!aAlternar) return;
+    setProcessando(true);
+    try {
+      await api.put(`/users/${aAlternar._id}`, { ativo: !aAlternar.ativo });
+      notificar({ tipo: 'sucesso', titulo: aAlternar.ativo ? 'Usuário inativado' : 'Usuário reativado' });
+      setAAlternar(null);
+      carregar();
+    } catch (err) {
+      notificar({ tipo: 'erro', titulo: 'Não foi possível alterar', descricao: err.response?.data?.error || err.message });
+    } finally {
+      setProcessando(false);
     }
   };
 
-  useEffect(() => { carregar(); }, []);
-
-  const deletar = async (id) => {
+  const remover = async () => {
+    if (!aRemover) return;
+    setProcessando(true);
     try {
-      await api.delete(`/users/${id}`);
-      setConfirmDel(null);
+      await api.delete(`/users/${aRemover._id}`);
+      notificar({ tipo: 'sucesso', titulo: 'Usuário removido' });
+      setARemover(null);
       carregar();
     } catch (err) {
-      alert(err.response?.data?.error || err.message);
+      notificar({ tipo: 'erro', titulo: 'Não foi possível remover', descricao: err.response?.data?.error || err.message });
+    } finally {
+      setProcessando(false);
     }
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Administração</h1>
-          <p className="text-slate-500 text-xs sm:text-sm mt-0.5">Gerenciamento de usuários</p>
-        </div>
-        <button
-          onClick={() => setModal('new')}
-          className="flex items-center gap-2 px-4 py-2.5 bg-royal text-white rounded-xl text-sm font-semibold hover:bg-royal/90 transition-colors shadow-sm"
-        >
-          <Plus size={16} />
-          <span>Novo Usuário</span>
-        </button>
-      </div>
+    <div className="flex flex-col gap-6">
+      <AppHeader
+        actionsSlot={
+          guard.canCreate && (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setEmEdicao(null);
+                setFormAberto(true);
+              }}
+            >
+              <Plus aria-hidden /> Novo usuário
+            </Button>
+          )
+        }
+      />
 
-      {/* Lista */}
-      {loading ? (
-        <div className="flex justify-center py-16"><LoadingSpinner /></div>
-      ) : (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50">
-                <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Usuário</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide hidden sm:table-cell">Perfil</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide hidden sm:table-cell">Status</th>
-                <th className="px-6 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {users.map(u => (
-                <tr key={u._id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${u.role === 'admin' ? 'bg-royal/10 text-royal' : 'bg-slate-100 text-slate-500'}`}>
-                        {u.role === 'admin' ? <ShieldCheck size={18} /> : <User size={18} />}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">{u.nome}</p>
-                        <p className="text-xs text-slate-400">@{u.username}</p>
-                      </div>
-                      {u._id === me?._id && (
-                        <span className="text-xs bg-royal/10 text-royal font-semibold px-2 py-0.5 rounded-full">você</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 hidden sm:table-cell">
-                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${u.role === 'admin' ? 'bg-royal/10 text-royal' : 'bg-slate-100 text-slate-600'}`}>
-                      {u.role === 'admin' ? 'Admin' : 'Usuário'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 hidden sm:table-cell">
-                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${u.ativo ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-                      {u.ativo ? 'Ativo' : 'Inativo'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button onClick={() => setModal(u)}
-                        className="p-2 rounded-lg text-slate-400 hover:text-royal hover:bg-royal/10 transition-colors">
-                        <Edit2 size={15} />
-                      </button>
-                      <button onClick={() => setConfirmDel(u)}
-                        className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Modal criar/editar */}
-      {modal && (
-        <UserModal
-          user={modal === 'new' ? null : modal}
-          onClose={() => setModal(null)}
-          onSave={() => { setModal(null); carregar(); }}
-        />
-      )}
-
-      {/* Confirm delete */}
-      {confirmDel && (
-        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm text-center">
-            <Trash2 size={32} className="text-red-400 mx-auto mb-3" />
-            <h3 className="font-bold text-slate-900 mb-1">Remover usuário?</h3>
-            <p className="text-sm text-slate-500 mb-5">Esta ação não pode ser desfeita. <strong>{confirmDel.nome}</strong> perderá o acesso.</p>
-            <div className="grid grid-cols-2 gap-3">
-              <button onClick={() => setConfirmDel(null)}
-                className="py-2.5 rounded-xl border-2 border-slate-200 text-slate-500 text-sm font-semibold hover:bg-slate-50 transition-colors">
-                Cancelar
-              </button>
-              <button onClick={() => deletar(confirmDel._id)}
-                className="py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-colors">
-                Remover
-              </button>
-            </div>
+      <PainelDeFiltros telaId="admin-usuarios" ativos={ativos} onLimparTudo={limparTudo} slotFixo={<SearchInput value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por nome ou usuário..." />}>
+        <CampoDeFiltro rotulo="Status">
+          <div className="flex h-10 items-center gap-2">
+            <Switch id="adm-inativos" checked={mostrarInativos} onCheckedChange={setMostrarInativos} />
+            <Label htmlFor="adm-inativos" className="text-sm text-neutral-700">
+              Mostrar inativos
+            </Label>
           </div>
-        </div>
-      )}
+        </CampoDeFiltro>
+      </PainelDeFiltros>
+
+      <TabelaDeDados
+        tabela={tabela}
+        chaveDaLinha={(u) => u._id}
+        classeDaLinha={(u) => (u.ativo ? undefined : 'opacity-60')}
+        carregando={carregando || guard.isLoading}
+        erro={erro}
+        aoTentarNovamente={carregar}
+        temFiltroDeTela={ativos.length > 0 || Boolean(busca)}
+        onLimparFiltrosDeTela={limparTudo}
+        vazio={{ mensagemVazio: 'Nenhum usuário cadastrado', mensagemFiltrada: 'Nenhum usuário corresponde aos filtros' }}
+      />
+
+      <FormularioDeUsuario
+        open={formAberto}
+        onOpenChange={setFormAberto}
+        usuario={emEdicao}
+        onSalvo={(editou) => {
+          setFormAberto(false);
+          setEmEdicao(null);
+          notificar({ tipo: 'sucesso', titulo: editou ? 'Usuário atualizado' : 'Usuário cadastrado' });
+          carregar();
+        }}
+      />
+
+      <ConfirmarExclusaoDialog
+        open={Boolean(aAlternar)}
+        onOpenChange={(v) => !v && setAAlternar(null)}
+        titulo={aAlternar ? `${aAlternar.ativo ? 'Inativar' : 'Reativar'} ${aAlternar.nome}?` : ''}
+        consequencia={aAlternar ? (aAlternar.ativo ? `${aAlternar.nome} não consegue mais entrar no painel a partir de agora.` : `${aAlternar.nome} volta a conseguir entrar no painel.`) : ''}
+        reversivel
+        textoReversivel="Nada é apagado: o cadastro continua na lista e pode ser alterado de novo pelo menu de ações."
+        textoConfirmar={aAlternar?.ativo ? 'Inativar' : 'Reativar'}
+        textoConfirmando={aAlternar?.ativo ? 'Inativando…' : 'Reativando…'}
+        onConfirmar={alternarAtivo}
+        confirmando={processando}
+      />
+
+      <ConfirmarExclusaoDialog
+        open={Boolean(aRemover)}
+        onOpenChange={(v) => !v && setARemover(null)}
+        alvo={aRemover ? `o usuário ${aRemover.nome}` : ''}
+        consequencia={aRemover ? `${aRemover.nome} perde o acesso imediatamente e o cadastro some da lista. Se a pessoa pode voltar, prefira "Inativar".` : ''}
+        textoConfirmar="Remover"
+        textoConfirmando="Removendo…"
+        onConfirmar={remover}
+        confirmando={processando}
+      />
     </div>
   );
 }

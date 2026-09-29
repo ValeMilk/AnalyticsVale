@@ -1,213 +1,169 @@
 import { useState, useEffect, useMemo } from 'react';
-import { TrendingUp, TrendingDown, Minus, BarChart3, Calendar } from 'lucide-react';
+import { BarChart3 } from 'lucide-react';
 import api from '../api/client';
-import LoadingSpinner from '../components/LoadingSpinner';
+import { useTituloDaPagina } from '../context/PaginaContext';
+import { AppHeader } from '../components/layout/AppHeader';
+import { PainelDeFiltros, CampoDeFiltro, filtrosAtivos } from '../components/filtros/PainelDeFiltros';
+import { SearchInput } from '../components/filtros/SearchInput';
+import { Segmentado } from '../components/filtros/Segmentado';
+import { CartaoDeResumo, FaixaDeResumo } from '../components/indicadores/CartaoDeResumo';
+import { Input } from '../components/ui/Input';
+import { Select } from '../components/ui/Select';
+import { Button } from '../components/ui/Button';
+import { Skeleton } from '../components/ui/Skeleton';
+import { BadgeDeTipoDeAcao } from '../components/BadgeDeTipoDeAcao';
+import { TIPOS_ACAO, ROTULO_TIPO_ACAO, normEan } from '../config/acoes';
+import { fmtData, fmtDiaSemana, fmtMoeda, fmtNumero, fmtPctComSinal, hojeLocal } from '../lib/formatar';
+import { cn } from '../lib/cn';
 
-const fmt = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const fmtPct = (v) => `${v > 0 ? '+' : ''}${Number(v).toFixed(1)}%`;
-const fmtData = (s) => {
-  if (!s) return '';
-  const [y, m, d] = s.split('T')[0].split('-');
-  return `${d}/${m}/${y}`;
-};
+const OPCOES_TIPO = [{ value: '', label: 'Todos' }, ...TIPOS_ACAO.map((t) => ({ value: t.value, label: t.label }))];
 
-const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-const fmtDiaSemana = (s) => {
-  if (!s) return '';
-  const [y, m, d] = s.split('T')[0].split('-');
-  const date = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
-  return DIAS_SEMANA[date.getUTCDay()];
-};
-
-const TIPOS = [
-  { value: '', label: 'Todos' },
-  { value: 'encarte', label: 'Encarte' },
-  { value: 'oferta_interna', label: 'Oferta Interna' },
-  { value: 'rebaixa', label: 'Rebaixa' },
-];
-
-const tipoColor = {
-  encarte: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
-  oferta_interna: 'bg-green-500/10 text-green-600 border-green-500/20',
-  rebaixa: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
-};
-
-const tipoLabel = { encarte: 'Encarte', oferta_interna: 'Oferta Interna', rebaixa: 'Rebaixa' };
-
-function CelVariacao({ valor, isBase }) {
-  if (isBase) return <td className="px-2 py-2 text-center text-xs text-slate-300 italic">base</td>;
-  if (valor === null || valor === undefined) return <td className="px-2 py-2 text-center text-xs text-slate-300">—</td>;
-  const pos = valor >= 0;
-  return (
-    <td className={`px-2 py-2 text-center text-xs font-bold ${pos ? 'text-green-600' : 'text-red-500'}`}>
-      {valor > 0 ? '+' : ''}{Number(valor).toFixed(1)}%
-    </td>
-  );
+function CelVariacao({ valor, isBase, destaque }) {
+  if (isBase) return <td className={cn('px-2 py-2 text-center text-xs italic text-neutral-400', destaque)}>base</td>;
+  if (valor === null || valor === undefined) return <td className={cn('px-2 py-2 text-center text-xs text-neutral-300', destaque)}>—</td>;
+  return <td className={cn('px-2 py-2 text-center text-xs font-bold tabular-nums', valor >= 0 ? 'text-success' : 'text-danger', destaque)}>{fmtPctComSinal(valor)}</td>;
 }
 
-function varVsBase(valorAtual, valorBase) {
-  if (!valorBase || Number(valorBase) === 0) return null;
-  return ((Number(valorAtual) - Number(valorBase)) / Number(valorBase)) * 100;
+function varVsBase(atual, base) {
+  if (!base || Number(base) === 0) return null;
+  return ((Number(atual) - Number(base)) / Number(base)) * 100;
 }
 
+/** Tabela pivô: uma coluna por ação do mesmo produto, lado a lado; a melhor (maior fat/dia) é a base. */
 function ProdutoGrupo({ grupo }) {
   const { produto, ean, cod_interno, vendor, acoes } = grupo;
-  const tiposBadge = [...new Set(acoes.map(a => a.acao.tipo))];
-
-  // melhor ação = maior faturamento/dia = base de comparação (normaliza duração diferente)
-  const melhorIdx = acoes.reduce((best, item, i) =>
-    Number(item.periodo_acao.venda_dia) > Number(acoes[best].periodo_acao.venda_dia) ? i : best, 0);
+  const melhorIdx = acoes.reduce((best, item, i) => (Number(item.periodo_acao.venda_dia) > Number(acoes[best].periodo_acao.venda_dia) ? i : best), 0);
   const base = acoes[melhorIdx];
+  const varias = acoes.length > 1;
+  const destaque = (i) => (varias && i === melhorIdx ? 'bg-success/5' : '');
+  const rotuloLinha = 'bg-neutral-50/70 px-2 py-2 text-xs font-medium text-neutral-500';
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-      {/* Header produto */}
-      <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+    <section className="superficie overflow-hidden">
+      <header className="flex flex-col gap-2 border-b border-neutral-200 bg-neutral-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h3 className="font-bold text-slate-900 text-sm sm:text-base">{produto}</h3>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <h3 className="text-sm font-semibold text-neutral-900 sm:text-base">{produto}</h3>
+          <p className="mt-0.5 text-xs text-neutral-500">
             {cod_interno && <span>Cód. {cod_interno} · </span>}
-            {vendor} · EAN: {ean?.replace(/,+$/, '')}
+            {vendor} · EAN {normEan(ean)}
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap shrink-0">
-          {tiposBadge.map(t => (
-            <span key={t} className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${tipoColor[t] || tipoColor.encarte}`}>
-              {tipoLabel[t]}
-            </span>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {[...new Set(acoes.map((a) => a.acao.tipo))].map((t) => (
+            <BadgeDeTipoDeAcao key={t} tipo={t} tamanho="sm" />
           ))}
-          <span className="text-xs text-slate-400">{acoes.length} ação{acoes.length !== 1 ? 'ões' : ''}</span>
+          <span className="text-xs text-neutral-500">{acoes.length === 1 ? '1 ação' : `${acoes.length} ações`}</span>
         </div>
-      </div>
+      </header>
 
-      {/* Tabela — scroll horizontal no mobile */}
-      <div className="overflow-x-auto w-full">
-        <table className="w-full text-sm border-collapse table-fixed">
+      <div className="w-full overflow-x-auto">
+        <table className="w-full border-collapse text-sm">
           <thead>
-            <tr className="border-b-2 border-slate-200">
-              <th className="px-2 py-3 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wide w-28 bg-slate-50/60">Métrica</th>
+            <tr className="border-b-2 border-neutral-200">
+              <th scope="col" className="w-28 bg-neutral-50/70 px-2 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                Métrica
+              </th>
               {acoes.map((item, i) => (
-                <th key={i} className={`px-2 py-3 text-center border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/60' : ''}`}>
-                  <div className="text-xs font-bold text-slate-700">
-                    {fmtData(item.periodo_acao.inicio)} <span className="text-slate-400 font-normal">({fmtDiaSemana(item.periodo_acao.inicio)})</span>
+                <th key={i} scope="col" className={cn('min-w-44 border-l border-neutral-100 px-2 py-3 text-center', destaque(i))}>
+                  <div className="text-xs font-semibold text-neutral-700">
+                    {fmtData(item.periodo_acao.inicio)} <span className="font-normal text-neutral-400">({fmtDiaSemana(item.periodo_acao.inicio)})</span>
                     {' → '}
-                    {fmtData(item.periodo_acao.fim)} <span className="text-slate-400 font-normal">({fmtDiaSemana(item.periodo_acao.fim)})</span>
+                    {fmtData(item.periodo_acao.fim)} <span className="font-normal text-neutral-400">({fmtDiaSemana(item.periodo_acao.fim)})</span>
                   </div>
-                  <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${tipoColor[item.acao.tipo] || tipoColor.encarte}`}>
-                    {tipoLabel[item.acao.tipo] || item.acao.tipo}
-                  </span>
-                  {i === melhorIdx && acoes.length > 1 && (
-                    <div className="text-[10px] text-green-600 font-semibold mt-1">★ Base (melhor fat/dia)</div>
-                  )}
+                  <BadgeDeTipoDeAcao tipo={item.acao.tipo} tamanho="sm" className="mt-1" />
+                  {varias && i === melhorIdx && <div className="mt-1 text-[10px] font-semibold text-success">★ Base (melhor fat/dia)</div>}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {/* Preço */}
-            <tr className="border-b border-slate-100 bg-slate-50/40">
-              <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60">Preço ação</td>
+            <tr className="border-b border-neutral-100">
+              <td className={rotuloLinha}>Preço da ação</td>
               {acoes.map((item, i) => (
-                <td key={i} className={`px-2 py-2 text-center text-xs text-slate-600 border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/40' : ''}`}>
-                  {fmt(item.acao.preco_acao)}
-                  {item.acao.preco_normal && <span className="ml-1 text-slate-300 line-through">{fmt(item.acao.preco_normal)}</span>}
+                <td key={i} className={cn('border-l border-neutral-100 px-2 py-2 text-center text-xs tabular-nums text-neutral-700', destaque(i))}>
+                  {fmtMoeda(item.acao.preco_acao)}
+                  {item.acao.preco_normal ? <span className="ml-1 text-neutral-400 line-through">{fmtMoeda(item.acao.preco_normal)}</span> : null}
                 </td>
               ))}
             </tr>
-            {/* Aderência ao preço da ação */}
-            <tr className="border-b border-slate-100 bg-slate-50/40">
-              <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60">
+            <tr className="border-b border-neutral-100">
+              <td className={rotuloLinha}>
                 Vendas ao preço
-                <div className="text-[10px] text-slate-300 font-normal">PDV vs cadastrado</div>
+                <div className="text-[10px] font-normal text-neutral-400">PDV vs. cadastrado</div>
               </td>
               {acoes.map((item, i) => {
                 const qtdPreco = item.periodo_acao.qtd_preco_acao || 0;
                 const qtdTotal = item.periodo_acao.qtd || 0;
-                const pct = qtdTotal > 0 ? (qtdPreco / qtdTotal * 100) : 0;
-                const cor = pct >= 80 ? 'text-green-600' : pct >= 50 ? 'text-yellow-500' : 'text-red-500';
+                const pct = qtdTotal > 0 ? (qtdPreco / qtdTotal) * 100 : 0;
                 return (
-                  <td key={i} className={`px-2 py-2 text-center border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/40' : ''}`}>
-                    <div className="text-sm font-bold text-slate-900">{Number(qtdPreco).toLocaleString('pt-BR')} un.</div>
-                    <div className={`text-[10px] font-semibold ${cor}`}>{pct.toFixed(0)}% do total</div>
+                  <td key={i} className={cn('border-l border-neutral-100 px-2 py-2 text-center', destaque(i))}>
+                    <div className="text-sm font-bold tabular-nums text-neutral-900">{fmtNumero(qtdPreco)} un.</div>
+                    <div className={cn('text-[10px] font-semibold', pct >= 80 ? 'text-success' : pct >= 50 ? 'text-warning' : 'text-danger')}>{pct.toFixed(0)}% do total</div>
                   </td>
                 );
               })}
             </tr>
-            {/* Quantidade */}
-            <tr className="border-b border-slate-100">
-              <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60">
-                Qtd/dia
-                <div className="text-[10px] text-slate-300 font-normal">total</div>
-              </td>
+            <tr className="border-b border-neutral-100">
+              <td className={rotuloLinha}>Qtd/dia</td>
               {acoes.map((item, i) => (
-                <td key={i} className={`px-2 py-2 text-center border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/40' : ''}`}>
-                  <div className="text-sm font-bold text-slate-900">{Number(item.periodo_acao.qtd_dia).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</div>
-                  <div className="text-[10px] text-slate-400">{Number(item.periodo_acao.qtd).toLocaleString('pt-BR')} em {item.periodo_acao.dias}d</div>
+                <td key={i} className={cn('border-l border-neutral-100 px-2 py-2 text-center', destaque(i))}>
+                  <div className="text-sm font-bold tabular-nums text-neutral-900">{fmtNumero(item.periodo_acao.qtd_dia, 1)}</div>
+                  <div className="text-[10px] text-neutral-400">
+                    {fmtNumero(item.periodo_acao.qtd)} em {item.periodo_acao.dias}d
+                  </div>
                 </td>
               ))}
             </tr>
-            {/* Var Qtd vs base */}
-            {acoes.length > 1 && (
-              <tr className="border-b border-slate-100 bg-slate-50/40">
-                <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60 pl-4">↳ vs base</td>
+            {varias && (
+              <tr className="border-b border-neutral-100">
+                <td className={cn(rotuloLinha, 'pl-4')}>↳ vs. base</td>
                 {acoes.map((item, i) => (
-                  <CelVariacao key={i} isBase={i === melhorIdx} valor={varVsBase(item.periodo_acao.qtd_dia, base.periodo_acao.qtd_dia)} />
+                  <CelVariacao key={i} isBase={i === melhorIdx} valor={varVsBase(item.periodo_acao.qtd_dia, base.periodo_acao.qtd_dia)} destaque={cn('border-l border-neutral-100', destaque(i))} />
                 ))}
               </tr>
             )}
-            {/* Faturamento */}
-            <tr className="border-b border-slate-100">
-              <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60">
-                Fat/dia
-                <div className="text-[10px] text-slate-300 font-normal">total</div>
-              </td>
+            <tr className="border-b border-neutral-100">
+              <td className={rotuloLinha}>Fat/dia</td>
               {acoes.map((item, i) => (
-                <td key={i} className={`px-2 py-2 text-center border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/40' : ''}`}>
-                  <div className="text-sm font-bold text-slate-900">{fmt(item.periodo_acao.venda_dia)}</div>
-                  <div className="text-[10px] text-slate-400">{fmt(item.periodo_acao.venda)} total</div>
+                <td key={i} className={cn('border-l border-neutral-100 px-2 py-2 text-center', destaque(i))}>
+                  <div className="text-sm font-bold tabular-nums text-neutral-900">{fmtMoeda(item.periodo_acao.venda_dia)}</div>
+                  <div className="text-[10px] text-neutral-400">{fmtMoeda(item.periodo_acao.venda)} total</div>
                 </td>
               ))}
             </tr>
-            {/* Var Fat vs base */}
-            {acoes.length > 1 && (
-              <tr className="border-b border-slate-100 bg-slate-50/40">
-                <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60 pl-4">↳ vs base</td>
+            {varias && (
+              <tr className="border-b border-neutral-100">
+                <td className={cn(rotuloLinha, 'pl-4')}>↳ vs. base</td>
                 {acoes.map((item, i) => (
-                  <CelVariacao key={i} isBase={i === melhorIdx} valor={varVsBase(item.periodo_acao.venda_dia, base.periodo_acao.venda_dia)} />
+                  <CelVariacao key={i} isBase={i === melhorIdx} valor={varVsBase(item.periodo_acao.venda_dia, base.periodo_acao.venda_dia)} destaque={cn('border-l border-neutral-100', destaque(i))} />
                 ))}
               </tr>
             )}
-            {/* Sell In */}
-            <tr className="border-b border-slate-100">
-              <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60">
-                Sell In/dia
-                <div className="text-[10px] text-slate-300 font-normal">total</div>
-              </td>
+            <tr className="border-b border-neutral-100">
+              <td className={rotuloLinha}>Sell In/dia</td>
               {acoes.map((item, i) => (
-                <td key={i} className={`px-2 py-2 text-center border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/40' : ''}`}>
-                  <div className="text-sm font-bold text-slate-900">{fmt(item.periodo_acao.margem_dia)}</div>
-                  <div className="text-[10px] text-slate-400">{fmt(item.periodo_acao.margem)} total</div>
+                <td key={i} className={cn('border-l border-neutral-100 px-2 py-2 text-center', destaque(i))}>
+                  <div className="text-sm font-bold tabular-nums text-neutral-900">{fmtMoeda(item.periodo_acao.margem_dia)}</div>
+                  <div className="text-[10px] text-neutral-400">{fmtMoeda(item.periodo_acao.margem)} total</div>
                 </td>
               ))}
             </tr>
-            {/* Var Sell In vs base */}
-            {acoes.length > 1 && (
-              <tr className="border-b border-slate-100 bg-slate-50/40">
-                <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60 pl-4">↳ vs base</td>
+            {varias && (
+              <tr className="border-b border-neutral-100">
+                <td className={cn(rotuloLinha, 'pl-4')}>↳ vs. base</td>
                 {acoes.map((item, i) => (
-                  <CelVariacao key={i} isBase={i === melhorIdx} valor={varVsBase(item.periodo_acao.margem_dia, base.periodo_acao.margem_dia)} />
+                  <CelVariacao key={i} isBase={i === melhorIdx} valor={varVsBase(item.periodo_acao.margem_dia, base.periodo_acao.margem_dia)} destaque={cn('border-l border-neutral-100', destaque(i))} />
                 ))}
               </tr>
             )}
-            {/* Resultado */}
             <tr>
-              <td className="px-2 py-2 text-xs text-slate-400 font-medium bg-slate-50/60">Resultado</td>
+              <td className={rotuloLinha}>Resultado</td>
               {acoes.map((item, i) => {
-                const eEficaz = acoes.length > 1 ? i === melhorIdx : item.eficaz;
+                const eficaz = varias ? i === melhorIdx : item.eficaz;
                 return (
-                  <td key={i} className={`px-2 py-2 text-center border-l border-slate-100 ${i === melhorIdx && acoes.length > 1 ? 'bg-green-50/40' : ''}`}>
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${eEficaz ? 'bg-green-500/10 text-green-600 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
-                      {eEficaz ? '✓ Eficaz' : '✗ Ineficaz'}
+                  <td key={i} className={cn('border-l border-neutral-100 px-2 py-2 text-center', destaque(i))}>
+                    <span className={cn('rounded-full border px-2.5 py-1 text-xs font-bold', eficaz ? 'border-success/30 bg-success/10 text-success' : 'border-danger/30 bg-danger/10 text-danger')}>
+                      {eficaz ? '✓ Eficaz' : '✗ Ineficaz'}
                     </span>
                   </td>
                 );
@@ -216,204 +172,197 @@ function ProdutoGrupo({ grupo }) {
           </tbody>
         </table>
       </div>
-    </div>
+    </section>
   );
 }
 
 export default function AcoesAnalise() {
+  useTituloDaPagina('Análise de eficácia', 'Compare ações do mesmo produto lado a lado');
+
   const [analises, setAnalises] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filtroTipo, setFiltroTipo] = useState('');
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(null);
+  const [produtos, setProdutos] = useState([]);
+
+  const [busca, setBusca] = useState('');
+  const [tipo, setTipo] = useState('');
   const [compInicio, setCompInicio] = useState('');
   const [compFim, setCompFim] = useState('');
-  const [buscaProduto, setBuscaProduto] = useState('');
-  const [produtos, setProdutos] = useState([]);
-  const [subcatSelecionada, setSubcatSelecionada] = useState('');
-  const [eansSelecionados, setEansSelecionados] = useState([]);
-
+  const [subcategoria, setSubcategoria] = useState('');
+  const [eanSelecionado, setEanSelecionado] = useState('');
 
   useEffect(() => {
-    api.get('/produtos').then(r => setProdutos(r.data.data || [])).catch(() => {});
+    api.get('/produtos').then((r) => setProdutos(r.data.data || [])).catch(() => {});
   }, []);
 
   useEffect(() => {
-    const fetch = async () => {
-      setLoading(true);
+    let cancelado = false;
+    const buscar = async () => {
+      setCarregando(true);
+      setErro(null);
       try {
-        const searchParams = new URLSearchParams();
-        if (filtroTipo) searchParams.set('tipo', filtroTipo);
-        if (compInicio) searchParams.set('comp_inicio', compInicio);
-        if (compFim) searchParams.set('comp_fim', compFim);
-        const qs = searchParams.toString();
-        const res = await api.get(`/acoes-analise${qs ? '?' + qs : ''}`);
-        setAnalises(res.data.data);
+        const p = new URLSearchParams();
+        if (tipo) p.set('tipo', tipo);
+        if (compInicio) p.set('comp_inicio', compInicio);
+        if (compFim) p.set('comp_fim', compFim);
+        const qs = p.toString();
+        const res = await api.get(`/acoes-analise${qs ? `?${qs}` : ''}`);
+        if (!cancelado) setAnalises(res.data.data || []);
       } catch (err) {
-        console.error('Erro ao carregar análises:', err);
+        if (!cancelado) setErro(err.response?.data?.error || err.message);
       } finally {
-        setLoading(false);
+        if (!cancelado) setCarregando(false);
       }
     };
-    fetch();
-  }, [filtroTipo, compInicio, compFim]);
+    buscar();
+    return () => {
+      cancelado = true;
+    };
+  }, [tipo, compInicio, compFim]);
 
-  const subcategorias = useMemo(() => [...new Set(produtos.map(p => p.subcategoria).filter(Boolean))].sort(), [produtos]);
+  const subcategorias = useMemo(() => [...new Set(produtos.map((p) => p.subcategoria).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [produtos]);
+  const produtosDaSubcat = useMemo(() => (subcategoria ? produtos.filter((p) => p.subcategoria === subcategoria) : produtos), [produtos, subcategoria]);
 
-  const produtosDaSubcat = useMemo(() =>
-    subcatSelecionada ? produtos.filter(p => p.subcategoria === subcatSelecionada) : [],
-    [produtos, subcatSelecionada]);
-
-  // EANs ativos para filtro: produto específico > subcategoria > todos
   const eansAtivos = useMemo(() => {
-    if (eansSelecionados.length > 0) return eansSelecionados;
-    if (subcatSelecionada) return produtosDaSubcat.map(p => p.ean?.replace(/,+$/, '')).filter(Boolean);
+    if (eanSelecionado) return [eanSelecionado];
+    if (subcategoria) return produtosDaSubcat.map((p) => normEan(p.ean)).filter(Boolean);
     return [];
-  }, [eansSelecionados, subcatSelecionada, produtosDaSubcat]);
+  }, [eanSelecionado, subcategoria, produtosDaSubcat]);
 
-  const analiseFiltradas = analises.filter(a => {
-    if (eansAtivos.length > 0) {
-      const eanNorm = a.acao.ean?.replace(/,+$/, '');
-      if (!eansAtivos.includes(eanNorm)) return false;
-    }
-    return true;
-  });
+  const filtradas = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    return analises.filter((a) => {
+      if (eansAtivos.length > 0 && !eansAtivos.includes(normEan(a.acao.ean))) return false;
+      if (q && !(a.acao.produto?.toLowerCase().includes(q) || normEan(a.acao.ean).includes(q) || String(a.acao.cod_interno ?? '').includes(q))) return false;
+      return true;
+    });
+  }, [analises, eansAtivos, busca]);
 
-  // Agrupa por produto (chave = ean normalizado ou nome do produto)
   const grupos = useMemo(() => {
     const mapa = {};
-    analiseFiltradas.forEach(item => {
-      const key = item.acao.ean?.replace(/,+$/, '') || item.acao.produto;
-      if (!mapa[key]) {
-        mapa[key] = {
-          produto: item.acao.produto,
-          ean: item.acao.ean,
-          cod_interno: item.acao.cod_interno,
-          vendor: item.acao.vendor,
-          acoes: [],
-        };
-      }
-      mapa[key].acoes.push(item);
+    filtradas.forEach((item) => {
+      const chave = normEan(item.acao.ean) || item.acao.produto;
+      (mapa[chave] ||= { produto: item.acao.produto, ean: item.acao.ean, cod_interno: item.acao.cod_interno, vendor: item.acao.vendor, acoes: [] }).acoes.push(item);
     });
-    // Ordena ações de cada grupo por data de início
-    Object.values(mapa).forEach(g => {
-      g.acoes.sort((a, b) => (a.periodo_acao.inicio || '').localeCompare(b.periodo_acao.inicio || ''));
-    });
-    // Ordena grupos pelo nome do produto
-    return Object.values(mapa).sort((a, b) => a.produto.localeCompare(b.produto));
-  }, [analiseFiltradas]);
+    Object.values(mapa).forEach((g) => g.acoes.sort((a, b) => (a.periodo_acao.inicio || '').localeCompare(b.periodo_acao.inicio || '')));
+    return Object.values(mapa).sort((a, b) => a.produto.localeCompare(b.produto, 'pt-BR'));
+  }, [filtradas]);
 
-  // Nova lógica: por grupo, a melhor ação é eficaz; se só 1 ação, usa o resultado do backend
-  const totalEficaz = grupos.reduce((acc, g) => {
-    if (g.acoes.length === 1) return acc + (g.acoes[0].eficaz ? 1 : 0);
-    return acc + 1; // cada grupo com múltiplas ações tem exatamente 1 eficaz (a melhor)
-  }, 0);
-  const totalIneficaz = analiseFiltradas.length - totalEficaz;
+  const totalEficaz = grupos.reduce((acc, g) => acc + (g.acoes.length === 1 ? (g.acoes[0].eficaz ? 1 : 0) : 1), 0);
+  const totalIneficaz = filtradas.length - totalEficaz;
+
+  const ativos = filtrosAtivos([
+    tipo && { id: 'tipo', rotulo: `Tipo: ${ROTULO_TIPO_ACAO[tipo]}`, onRemover: () => setTipo('') },
+    subcategoria && {
+      id: 'sub',
+      rotulo: `Subcategoria: ${subcategoria}`,
+      onRemover: () => {
+        setSubcategoria('');
+        setEanSelecionado('');
+      },
+    },
+    eanSelecionado && { id: 'produto', rotulo: `Produto: ${produtos.find((p) => normEan(p.ean) === eanSelecionado)?.produto ?? eanSelecionado}`, onRemover: () => setEanSelecionado('') },
+    (compInicio || compFim) && {
+      id: 'comp',
+      rotulo: `Comparação: ${fmtData(compInicio) || '…'} → ${fmtData(compFim) || '…'}`,
+      onRemover: () => {
+        setCompInicio('');
+        setCompFim('');
+      },
+    },
+  ]);
+  const limparTudo = () => {
+    setTipo('');
+    setSubcategoria('');
+    setEanSelecionado('');
+    setCompInicio('');
+    setCompFim('');
+    setBusca('');
+  };
+  const temFiltro = ativos.length > 0 || Boolean(busca);
 
   return (
-    <div>
-      <div className="mb-4 sm:mb-6">
-        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Análise de Eficácia</h1>
-        <p className="text-slate-500 text-xs sm:text-sm mt-1">Compare ações do mesmo produto lado a lado</p>
-      </div>
+    <div className="flex flex-col gap-6">
+      <AppHeader
+        filters={
+          <p className="text-sm text-neutral-500">
+            {compInicio && compFim ? `Comparando com o período ${fmtData(compInicio)} → ${fmtData(compFim)}.` : 'Comparação automática: período equivalente imediatamente anterior a cada ação.'}
+          </p>
+        }
+      />
 
-      {/* Resumo */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
-        <div className="bg-white rounded-xl border border-slate-200 p-3 sm:p-5 text-center shadow-sm">
-          <p className="text-2xl sm:text-3xl font-bold text-slate-900">{grupos.length}</p>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">Produtos</p>
+      <FaixaDeResumo>
+        <CartaoDeResumo rotulo="Produtos" valor={carregando ? undefined : fmtNumero(grupos.length)} />
+        <CartaoDeResumo rotulo="Total de ações" valor={carregando ? undefined : fmtNumero(filtradas.length)} />
+        <CartaoDeResumo rotulo="Eficazes" valor={carregando ? undefined : fmtNumero(totalEficaz)} tom="sucesso" />
+        <CartaoDeResumo rotulo="Ineficazes" valor={carregando ? undefined : fmtNumero(totalIneficaz)} tom={totalIneficaz > 0 ? 'perigo' : 'neutro'} />
+      </FaixaDeResumo>
+
+      <PainelDeFiltros telaId="acoes-analise" ativos={ativos} onLimparTudo={limparTudo} abrirQuando={Boolean(compInicio || compFim)} slotFixo={<SearchInput value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar produto, EAN ou código..." />}>
+        <CampoDeFiltro rotulo="Subcategoria" htmlFor="analise-sub">
+          <Select
+            id="analise-sub"
+            value={subcategoria}
+            onChange={(e) => {
+              setSubcategoria(e.target.value);
+              setEanSelecionado('');
+            }}
+          >
+            <option value="">Todas</option>
+            {subcategorias.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </Select>
+        </CampoDeFiltro>
+        <CampoDeFiltro rotulo="Produto" htmlFor="analise-produto">
+          <Select id="analise-produto" value={eanSelecionado} onChange={(e) => setEanSelecionado(e.target.value)}>
+            <option value="">Todos</option>
+            {produtosDaSubcat.map((p) => (
+              <option key={p.ean} value={normEan(p.ean)}>
+                {p.produto}
+              </option>
+            ))}
+          </Select>
+        </CampoDeFiltro>
+        <CampoDeFiltro rotulo="Tipo de ação">
+          <Segmentado rotulo="Tipo de ação" opcoes={OPCOES_TIPO} valor={tipo} onChange={setTipo} className="h-10 items-center" />
+        </CampoDeFiltro>
+        <CampoDeFiltro rotulo="Comparar com — início" htmlFor="analise-comp-ini" ajuda="Deixe em branco para o período anterior automático">
+          <Input id="analise-comp-ini" type="date" value={compInicio} max={hojeLocal()} onChange={(e) => setCompInicio(e.target.value)} />
+        </CampoDeFiltro>
+        <CampoDeFiltro rotulo="Comparar com — fim" htmlFor="analise-comp-fim">
+          <Input id="analise-comp-fim" type="date" value={compFim} min={compInicio || undefined} max={hojeLocal()} onChange={(e) => setCompFim(e.target.value)} />
+        </CampoDeFiltro>
+      </PainelDeFiltros>
+
+      {carregando ? (
+        <div className="flex flex-col gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-64 w-full" />
+          ))}
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-3 sm:p-5 text-center shadow-sm">
-          <p className="text-2xl sm:text-3xl font-bold text-slate-900">{analiseFiltradas.length}</p>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">Total de Ações</p>
+      ) : erro ? (
+        <div className="superficie p-8 text-center">
+          <p className="text-sm font-medium text-danger">Não foi possível carregar as análises</p>
+          <p className="mt-1 text-xs text-neutral-500">{erro}</p>
         </div>
-        <div className="bg-white rounded-xl border border-green-500/20 p-3 sm:p-5 text-center shadow-sm">
-          <p className="text-2xl sm:text-3xl font-bold text-green-600">{totalEficaz}</p>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">Eficazes</p>
+      ) : grupos.length === 0 ? (
+        <div className="superficie flex flex-col items-center gap-3 p-12 text-center">
+          <BarChart3 className="size-10 text-neutral-300" aria-hidden />
+          <p className="text-base font-medium text-neutral-700">{temFiltro ? 'Nenhuma ação corresponde aos filtros' : 'Nenhuma análise disponível'}</p>
+          <p className="text-sm text-neutral-400">{temFiltro ? 'Ajuste o recorte para ver outras ações.' : 'Cadastre ações comerciais para começar.'}</p>
+          {temFiltro && (
+            <Button variant="secondary" size="sm" onClick={limparTudo}>
+              Limpar filtros
+            </Button>
+          )}
         </div>
-        <div className="bg-white rounded-xl border border-red-500/20 p-3 sm:p-5 text-center shadow-sm">
-          <p className="text-2xl sm:text-3xl font-bold text-red-600">{totalIneficaz}</p>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">Ineficazes</p>
-        </div>
-      </div>
-
-      {/* Filtros */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 mb-4 sm:mb-6 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3 sm:gap-4">
-          {/* Subcategoria */}
-          <div className="flex-1 min-w-0 sm:flex-none">
-            <label className="block text-xs text-slate-500 mb-1.5">Subcategoria</label>
-            <select value={subcatSelecionada} onChange={e => { setSubcatSelecionada(e.target.value); setEansSelecionados([]); }}
-              className="w-full sm:w-48 bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 sm:py-1.5 text-slate-900 text-xs focus:border-royal focus:outline-none">
-              <option value="">Todas</option>
-              {subcategorias.map(sub => <option key={sub} value={sub}>{sub}</option>)}
-            </select>
-          </div>
-
-          {/* Produto */}
-          <div className="flex-1 min-w-0 sm:flex-none">
-            <label className="block text-xs text-slate-500 mb-1.5">Produto</label>
-            <select
-              value={eansSelecionados[0] || ''}
-              onChange={e => setEansSelecionados(e.target.value ? [e.target.value] : [])}
-              className="w-full sm:w-56 bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 sm:py-1.5 text-slate-900 text-xs focus:border-royal focus:outline-none">
-              <option value="">Todos</option>
-              {(subcatSelecionada ? produtosDaSubcat : produtos).map(p => (
-                <option key={p.ean} value={p.ean?.replace(/,+$/, '')}>{p.produto}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Tipo */}
-          <div>
-            <label className="block text-xs text-slate-500 mb-1.5">Tipo de Ação</label>
-            <div className="flex gap-1.5 flex-wrap">
-              {TIPOS.map(t => (
-                <button key={t.value} onClick={() => setFiltroTipo(t.value)}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all ${filtroTipo === t.value ? 'bg-royal/10 text-royal border-royal/20' : 'border-slate-200 text-slate-500 hover:text-slate-900'}`}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Período de Comparação */}
-          <div className="flex items-end gap-2 sm:ml-auto">
-            <Calendar size={16} className="text-slate-400 mb-2 hidden sm:block" />
-            <div>
-              <label className="block text-xs text-slate-500 mb-1.5">Período comparação - Início</label>
-              <input type="date" value={compInicio} onChange={(e) => setCompInicio(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 sm:py-1.5 text-slate-900 text-xs focus:border-royal focus:outline-none" />
-            </div>
-            <div>
-              <label className="block text-xs text-slate-500 mb-1.5">Fim</label>
-              <input type="date" value={compFim} onChange={(e) => setCompFim(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 sm:py-1.5 text-slate-900 text-xs focus:border-royal focus:outline-none" />
-            </div>
-            {(compInicio || compFim) && (
-              <button onClick={() => { setCompInicio(''); setCompFim(''); }}
-                className="px-3 py-2 sm:py-1.5 rounded-lg text-xs text-slate-500 hover:text-slate-900 border border-slate-200 hover:border-slate-300 transition-all shrink-0">
-                Limpar
-              </button>
-            )}
-          </div>
-        </div>
-        {(compInicio && compFim) && (
-          <p className="text-xs text-royal mt-3">Comparando com período customizado: {compInicio} → {compFim}</p>
-        )}
-        {(!compInicio && !compFim) && (
-          <p className="text-xs text-slate-400 mt-3">Comparação automática: período equivalente anterior à ação</p>
-        )}
-      </div>
-
-      {loading ? <LoadingSpinner /> : (
-        <div className="space-y-4">
-          {analiseFiltradas.length === 0 ? (
-            <div className="bg-white rounded-xl border border-slate-200 p-12 text-center shadow-sm">
-              <BarChart3 size={48} className="mx-auto text-slate-300 mb-4" />
-              <p className="text-slate-400 text-lg">Nenhuma análise disponível</p>
-              <p className="text-slate-300 text-sm mt-1">Cadastre ações comerciais primeiro</p>
-            </div>
-          ) : grupos.map((grupo, i) => (
-            <ProdutoGrupo key={grupo.ean || grupo.produto || i} grupo={grupo} />
+      ) : (
+        <div className="flex flex-col gap-4">
+          {grupos.map((g, i) => (
+            <ProdutoGrupo key={normEan(g.ean) || g.produto || i} grupo={g} />
           ))}
         </div>
       )}

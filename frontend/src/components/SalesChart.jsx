@@ -1,13 +1,7 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Customized } from 'recharts';
-
-const fmt = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-const ACAO_COLORS = {
-  encarte: '#EAB308',
-  oferta_interna: '#10B981',
-  rebaixa: '#F97316',
-};
-const DEFAULT_COLOR = '#0056A6';
+import { graficos } from '../styles/tokens';
+import { COR_TIPO_ACAO, PRIORIDADE_TIPO_ACAO, ROTULO_TIPO_ACAO, normEan } from '../config/acoes';
+import { fmtDataCurta, fmtMoeda, fmtNumero, soData } from '../lib/formatar';
 
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
@@ -15,85 +9,59 @@ function CustomTooltip({ active, payload, label }) {
   const point = entry?.payload || {};
   const tipo = point._tipo;
   const acoesAtivas = point._acoes_ativas || [];
-  const qtdTotal = point.qtd;
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-lg min-w-[200px]">
-      <p className="text-xs text-slate-500 mb-2">{label}</p>
-      <div className="mb-2">
-        <p className="text-sm font-semibold" style={{ color: tipo ? ACAO_COLORS[tipo] : DEFAULT_COLOR }}>
-          R$ {Number(entry.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-        </p>
-        {qtdTotal != null && (
-          <p className="text-xs text-slate-500">{Number(qtdTotal).toLocaleString('pt-BR')} unid.</p>
-        )}
-      </div>
+    <div className="min-w-[200px] rounded-lg border border-neutral-200 bg-white p-3 shadow-lg">
+      <p className="mb-2 text-xs text-neutral-500">{label}</p>
+      <p className="text-sm font-semibold tabular-nums" style={{ color: tipo ? COR_TIPO_ACAO[tipo] : graficos.padrao }}>
+        {fmtMoeda(entry.value)}
+      </p>
+      {point.qtd != null && <p className="text-xs text-neutral-500">{fmtNumero(point.qtd)} unid.</p>}
       {acoesAtivas.length > 0 && (
-        <div className="border-t border-slate-100 pt-2 mt-1 space-y-1">
-          {acoesAtivas.map((a, i) => (
+        <div className="mt-2 space-y-1 border-t border-neutral-100 pt-2">
+          {acoesAtivas.slice(0, 6).map((a, i) => (
             <div key={i} className="flex items-start gap-1.5">
-              <span
-                className="mt-0.5 flex-shrink-0 w-2 h-2 rounded-full"
-                style={{ backgroundColor: ACAO_COLORS[a.tipo] || DEFAULT_COLOR }}
-              />
-              <div>
-                <p className="text-xs font-medium text-slate-700 leading-tight">{a.produto}</p>
-                <p className="text-xs text-slate-400" style={{ color: ACAO_COLORS[a.tipo] || DEFAULT_COLOR }}>
-                  {a.tipo === 'encarte' ? 'Encarte' : a.tipo === 'oferta_interna' ? 'Oferta Interna' : 'Rebaixa'}
+              <span className="mt-1 size-2 shrink-0 rounded-full" style={{ backgroundColor: COR_TIPO_ACAO[a.tipo] || graficos.padrao }} />
+              <div className="min-w-0">
+                <p className="truncate text-xs font-medium text-neutral-700">{a.produto}</p>
+                <p className="text-[11px]" style={{ color: COR_TIPO_ACAO[a.tipo] || graficos.padrao }}>
+                  {ROTULO_TIPO_ACAO[a.tipo] ?? a.tipo}
                 </p>
               </div>
             </div>
           ))}
+          {acoesAtivas.length > 6 && <p className="text-[11px] text-neutral-400">+{acoesAtivas.length - 6} ações</p>}
         </div>
       )}
     </div>
   );
 }
 
-function formatDate(dateStr) {
-  const d = typeof dateStr === 'string' ? dateStr.slice(0, 10) : dateStr instanceof Date ? dateStr.toISOString().slice(0, 10) : null;
-  if (!d) return dateStr;
-  const [y, m, day] = d.split('-');
-  return `${day}/${m}`;
-}
-
-function normalizeDate(val) {
-  if (!val) return null;
-  if (typeof val === 'string') return val.slice(0, 10);
-  if (val instanceof Date) return val.toISOString().slice(0, 10);
-  return null;
-}
-
-// Determina o tipo dominante e lista todas as ações vigentes num dia
+// Tipo dominante e lista de ações vigentes num dia
 function getAcoesParaDia(dataRaw, acoes) {
   if (!dataRaw || !acoes.length) return { tipo: null, ativas: [] };
-  const prioridade = ['encarte', 'oferta_interna', 'rebaixa'];
   let dominante = null;
   const ativas = [];
   for (const a of acoes) {
-    const ini = normalizeDate(a.data_inicio);
-    const fim = normalizeDate(a.data_fim);
+    const ini = soData(a.data_inicio);
+    const fim = soData(a.data_fim);
     if (!ini || !fim) continue;
     if (dataRaw >= ini && dataRaw <= fim) {
       ativas.push(a);
-      if (!dominante || prioridade.indexOf(a.tipo) < prioridade.indexOf(dominante)) {
-        dominante = a.tipo;
-      }
+      if (!dominante || PRIORIDADE_TIPO_ACAO.indexOf(a.tipo) < PRIORIDADE_TIPO_ACAO.indexOf(dominante)) dominante = a.tipo;
     }
   }
   return { tipo: dominante, ativas };
 }
 
-// Componente que desenha segmentos coloridos sobre a linha invisível
+// Segmentos coloridos por cima da linha (a Line em si é transparente)
 function ColoredSegments({ formattedGraphicalItems, chartData }) {
   if (!formattedGraphicalItems?.length) return null;
-  const lineItem = formattedGraphicalItems[0];
-  const points = lineItem?.props?.points;
+  const points = formattedGraphicalItems[0]?.props?.points;
   if (!points || points.length < 2) return null;
 
   const segments = [];
   for (let i = 0; i < points.length - 1; i++) {
     const tipo = chartData[i]?._tipo || chartData[i + 1]?._tipo;
-    const color = tipo ? ACAO_COLORS[tipo] : DEFAULT_COLOR;
     segments.push(
       <line
         key={`seg-${i}`}
@@ -101,82 +69,49 @@ function ColoredSegments({ formattedGraphicalItems, chartData }) {
         y1={points[i].y}
         x2={points[i + 1].x}
         y2={points[i + 1].y}
-        stroke={color}
+        stroke={tipo ? COR_TIPO_ACAO[tipo] : graficos.padrao}
         strokeWidth={3}
         strokeLinecap="round"
       />
     );
   }
-
   const dots = points.map((p, i) => {
     const tipo = chartData[i]?._tipo;
     if (!tipo) return null;
-    const color = ACAO_COLORS[tipo] || DEFAULT_COLOR;
-    return (
-      <circle key={`dot-${i}`} cx={p.x} cy={p.y} r={4} fill={color} stroke="white" strokeWidth={2} />
-    );
+    return <circle key={`dot-${i}`} cx={p.x} cy={p.y} r={4} fill={COR_TIPO_ACAO[tipo] || graficos.padrao} stroke="#fff" strokeWidth={2} />;
   });
-
-  return <g>{segments}{dots}</g>;
+  return (
+    <g>
+      {segments}
+      {dots}
+    </g>
+  );
 }
 
 export default function SalesChart({ data = [], acoes = [], vendor = 'ambos', eansFiltros = [] }) {
-  // Filtra ações: vendor específico só mostra ações daquele vendor; "ambos" mostra tudo
-  let acoesFiltradas = acoes.filter(a =>
-    vendor === 'ambos' ? true : a.vendor === vendor
-  );
-
-  // Se há produtos selecionados, filtra ações apenas dos EANs desses produtos
-  // Normaliza EANs para comparação (remove vírgula trailing)
+  let acoesFiltradas = acoes.filter((a) => (vendor === 'ambos' ? true : a.vendor === vendor || a.vendor === 'ambos'));
   if (eansFiltros.length > 0) {
-    const eansNorm = new Set(eansFiltros.map(e => e.replace(/,+$/, '').trim()));
-    acoesFiltradas = acoesFiltradas.filter(a => {
-      const eanAcao = (a.ean || '').replace(/,+$/, '').trim();
-      return eansNorm.has(eanAcao);
-    });
+    const eansNorm = new Set(eansFiltros.map(normEan));
+    acoesFiltradas = acoesFiltradas.filter((a) => eansNorm.has(normEan(a.ean)));
   }
 
-  const chartData = data.map(d => {
-    const dataRaw = normalizeDate(d.data);
+  const chartData = data.map((d) => {
+    const dataRaw = soData(d.data);
     const { tipo, ativas } = getAcoesParaDia(dataRaw, acoesFiltradas);
-    return {
-      ...d,
-      dataFmt: formatDate(d.data),
-      dataRaw,
-      _tipo: tipo,
-      _acoes_ativas: ativas,
-    };
+    return { ...d, dataFmt: fmtDataCurta(d.data), dataRaw, _tipo: tipo, _acoes_ativas: ativas };
   });
+
+  if (!chartData.length) return <div className="flex h-64 items-center justify-center text-sm text-neutral-400">Sem dados para o período</div>;
 
   return (
     <ResponsiveContainer width="100%" height={320}>
       <LineChart data={chartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-        <XAxis
-          dataKey="dataFmt"
-          tick={{ fill: '#64748B', fontSize: 12 }}
-          axisLine={{ stroke: '#E2E8F0' }}
-          tickLine={false}
-        />
-        <YAxis
-          tick={{ fill: '#64748B', fontSize: 12 }}
-          axisLine={false}
-          tickLine={false}
-          tickFormatter={(v) => `R$ ${(v / 1000).toFixed(0)}k`}
-        />
+        <CartesianGrid strokeDasharray="3 3" stroke={graficos.grade} />
+        <XAxis dataKey="dataFmt" tick={{ fill: graficos.eixo, fontSize: 12 }} axisLine={{ stroke: graficos.grade }} tickLine={false} />
+        <YAxis tick={{ fill: graficos.eixo, fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(v) => `R$ ${(v / 1000).toFixed(0)}k`} />
         <Tooltip content={<CustomTooltip />} />
-        <Line
-          type="linear"
-          dataKey="venda"
-          name="Venda"
-          stroke="transparent"
-          strokeWidth={0}
-          dot={false}
-          activeDot={{ r: 5, stroke: 'white', strokeWidth: 2 }}
-        />
-        <Customized
-          component={(props) => <ColoredSegments {...props} chartData={chartData} />}
-        />
+        <Line type="linear" dataKey="venda" name="Venda" stroke="transparent" strokeWidth={0} dot={false} activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2 }} />
+        <Customized component={(props) => <ColoredSegments {...props} chartData={chartData} />} />
       </LineChart>
     </ResponsiveContainer>
   );

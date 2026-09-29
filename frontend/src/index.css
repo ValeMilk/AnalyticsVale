@@ -2,29 +2,70 @@
 @tailwind components;
 @tailwind utilities;
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/*
+  Regra das camadas: todo reset de elemento nativo fica DENTRO de @layer base,
+  com seletor de elemento puro (especificidade 0,0,1), para que qualquer utility
+  de componente (bg-white, rounded-lg, ...) vença sem !important.
+*/
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-background font-sans text-foreground;
+  }
+
+  input,
+  textarea,
+  select {
+    background-color: var(--input);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    color: var(--foreground);
+  }
+
+  /* Foco visível para elementos nativos sem tratamento próprio. Componentes com anel (ring)
+     adicionam focus-visible:outline-none para não mostrar dois indicadores. */
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
 }
 
-body {
-  font-family: 'Inter', sans-serif;
-  background-color: #F5F7FA;
-  color: #1E293B;
-  -webkit-font-smoothing: antialiased;
+@layer components {
+  /* Superfície única: a ÚNICA forma de dizer "isto é um bloco de conteúdo" */
+  .superficie {
+    @apply rounded-lg border border-neutral-200 bg-white;
+  }
+
+  /* Fundo da casca: degradê sutil em tons claros da marca */
+  .app-bg {
+    background: linear-gradient(to bottom, var(--layout-grad-from), var(--layout-grad-via), var(--layout-grad-to));
+  }
 }
 
 ::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #E2E8F0;
+  background: var(--neutral-100);
 }
 ::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
+  background: var(--neutral-300);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94A3B8;
+  background: var(--neutral-400);
 }

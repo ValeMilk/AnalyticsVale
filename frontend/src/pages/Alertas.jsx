@@ -1,108 +1,94 @@
-import { useState, useEffect } from 'react';
-import { AlertCircle, AlertTriangle, ShoppingCart } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { RefreshCw } from 'lucide-react';
 import api from '../api/client';
+import { useTituloDaPagina } from '../context/PaginaContext';
+import { AppHeader } from '../components/layout/AppHeader';
+import { CartaoDeResumo, FaixaDeResumo } from '../components/indicadores/CartaoDeResumo';
+import { Button } from '../components/ui/Button';
+import { Skeleton } from '../components/ui/Skeleton';
 import AlertCard from '../components/AlertCard';
-import LoadingSpinner from '../components/LoadingSpinner';
+import { fmtNumero } from '../lib/formatar';
+
+const VAZIO = { alertas: [], total: 0, criticos: 0, avisos: 0 };
 
 export default function Alertas() {
-  const [data, setData] = useState({ alertas: [], total: 0, criticos: 0, avisos: 0 });
-  const [loading, setLoading] = useState(true);
-  const [filtro, setFiltro] = useState('todos');
+  useTituloDaPagina('Alertas', 'Monitoramento automático dos últimos 7 dias');
+  const [dados, setDados] = useState(null);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(null);
+  const [filtro, setFiltro] = useState('todos'); // 'todos' | 'criticos' | 'avisos'
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const res = await api.get('/alertas');
-        setData(res.data.data || { alertas: [], total: 0, criticos: 0, avisos: 0 });
-      } catch (err) {
-        console.error('Erro ao carregar alertas:', err);
-      } finally {
-        setLoading(false);
-      }
+  const carregar = useCallback(async () => {
+    setCarregando(true);
+    setErro(null);
+    try {
+      const res = await api.get('/alertas');
+      setDados(res.data.data || VAZIO);
+    } catch (err) {
+      setErro(err.response?.data?.error || err.message);
+    } finally {
+      setCarregando(false);
     }
-    fetchData();
   }, []);
 
-  const alertasFiltrados = data.alertas.filter((a) => {
-    if (filtro === 'todos') return true;
-    if (filtro === 'criticos') return a.tipo === 'critico';
-    if (filtro === 'avisos') return a.tipo === 'aviso';
-    return true;
-  });
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
 
-  if (loading) return <LoadingSpinner />;
+  const d = dados ?? VAZIO;
+  const lista = d.alertas.filter((a) => (filtro === 'todos' ? true : filtro === 'criticos' ? a.tipo === 'critico' : a.tipo === 'aviso'));
+  // O cartão é o próprio toggle: clicar de novo no ativo remove o filtro
+  const alternar = (chave) => setFiltro((atual) => (atual === chave ? 'todos' : chave));
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Alertas</h1>
-        <p className="text-slate-500 text-xs sm:text-sm mt-1">Monitoramento automático de vendas</p>
-      </div>
+    <div className="flex flex-col gap-6">
+      <AppHeader
+        filters={<p className="text-sm text-neutral-500">Queda de vendas diárias e margem negativa, calculadas sobre as duas bandeiras.</p>}
+        actionsSlot={
+          <Button variant="outline" onClick={carregar} disabled={carregando} aria-label="Atualizar alertas">
+            <RefreshCw className={carregando ? 'animate-spin' : ''} aria-hidden />
+            <span className="hidden sm:inline">Atualizar</span>
+          </Button>
+        }
+      />
 
-      {/* Resumo */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 flex items-center gap-4 shadow-sm">
-          <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
-            <AlertCircle size={20} />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-slate-900">{data.total}</p>
-            <p className="text-xs text-slate-500">Total</p>
-          </div>
-        </div>
-        <div className="bg-white rounded-2xl border border-red-500/20 p-4 flex items-center gap-4 shadow-sm">
-          <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center text-red-600">
-            <AlertCircle size={20} />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-red-600">{data.criticos}</p>
-            <p className="text-xs text-slate-500">Críticos</p>
-          </div>
-        </div>
-        <div className="bg-white rounded-2xl border border-amber-500/20 p-4 flex items-center gap-4 shadow-sm">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600">
-            <AlertTriangle size={20} />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-amber-600">{data.avisos}</p>
-            <p className="text-xs text-slate-500">Avisos</p>
-          </div>
-        </div>
-      </div>
+      <FaixaDeResumo colunas={3}>
+        <CartaoDeResumo rotulo="Total de alertas" valor={carregando ? undefined : fmtNumero(d.total)} apoio="nos últimos 7 dias" onClick={() => setFiltro('todos')} ativo={filtro === 'todos'} />
+        <CartaoDeResumo rotulo="Críticos" valor={carregando ? undefined : fmtNumero(d.criticos)} tom={d.criticos > 0 ? 'perigo' : 'neutro'} onClick={() => alternar('criticos')} ativo={filtro === 'criticos'} />
+        <CartaoDeResumo rotulo="Avisos" valor={carregando ? undefined : fmtNumero(d.avisos)} tom={d.avisos > 0 ? 'alerta' : 'neutro'} onClick={() => alternar('avisos')} ativo={filtro === 'avisos'} />
+      </FaixaDeResumo>
 
-      {/* Filtros */}
-      <div className="flex gap-2 flex-wrap">
-        {[
-          { key: 'todos', label: 'Todos' },
-          { key: 'criticos', label: 'Críticos' },
-          { key: 'avisos', label: 'Avisos' },
-        ].map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setFiltro(key)}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-              filtro === key
-                ? 'bg-royal/10 text-royal border border-royal/20'
-                : 'bg-white text-slate-500 border border-slate-200 hover:text-slate-900'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Lista de Alertas */}
-      <div className="space-y-3">
-        {alertasFiltrados.map((alerta, i) => (
-          <AlertCard key={i} alerta={alerta} />
-        ))}
-        {alertasFiltrados.length === 0 && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-sm">
-            <p className="text-slate-400 text-lg">Nenhum alerta encontrado</p>
-            <p className="text-slate-300 text-sm mt-1">Todos os indicadores estão normais</p>
-          </div>
-        )}
-      </div>
+      {carregando ? (
+        <div className="flex flex-col gap-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-20 w-full" />
+          ))}
+        </div>
+      ) : erro ? (
+        <div className="superficie p-8 text-center">
+          <p className="text-sm font-medium text-danger">Não foi possível carregar os alertas</p>
+          <p className="mt-1 text-xs text-neutral-500">{erro}</p>
+          <Button variant="outline" size="sm" className="mt-4" onClick={carregar}>
+            Tentar novamente
+          </Button>
+        </div>
+      ) : lista.length === 0 ? (
+        <div className="superficie p-12 text-center">
+          <p className="text-base font-medium text-neutral-700">{filtro === 'todos' ? 'Nenhum alerta' : 'Nenhum alerta deste tipo'}</p>
+          <p className="mt-1 text-sm text-neutral-400">Todos os indicadores estão dentro do esperado.</p>
+          {filtro !== 'todos' && (
+            <Button variant="secondary" size="sm" className="mt-4" onClick={() => setFiltro('todos')}>
+              Ver todos
+            </Button>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {lista.map((alerta, i) => (
+            <AlertCard key={`${alerta.titulo}-${alerta.timestamp}-${i}`} alerta={alerta} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

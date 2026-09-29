@@ -1,7 +1,8 @@
-export default function LoadingSpinner() {
+export default function LoadingSpinner({ mensagem }) {
   return (
-    <div className="flex items-center justify-center py-16">
-      <div className="w-10 h-10 border-4 border-royal/30 border-t-royal rounded-full animate-spin" />
+    <div className="flex flex-col items-center justify-center gap-3 py-16" role="status" aria-live="polite">
+      <div className="size-10 animate-spin rounded-full border-4 border-secondary/20 border-t-secondary" />
+      <span className={mensagem ? 'text-sm text-neutral-500' : 'sr-only'}>{mensagem ?? 'Carregando'}</span>
     </div>
   );
 }

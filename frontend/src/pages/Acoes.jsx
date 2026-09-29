@@ -1,335 +1,431 @@
-import { useState, useEffect, useRef } from 'react';
-import { Plus, Trash2, Edit2, Tag, X, Search, ChevronDown } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Loader2, MoreHorizontal, Pencil, Plus, Trash2, X } from 'lucide-react';
 import api from '../api/client';
-import LoadingSpinner from '../components/LoadingSpinner';
+import { useTituloDaPagina } from '../context/PaginaContext';
+import { AppHeader } from '../components/layout/AppHeader';
+import { PainelDeFiltros, CampoDeFiltro, filtrosAtivos } from '../components/filtros/PainelDeFiltros';
+import { SearchInput } from '../components/filtros/SearchInput';
+import { Segmentado, OPCOES_BANDEIRA, ROTULO_BANDEIRA } from '../components/filtros/Segmentado';
+import { TabelaDeDados } from '../components/tabela/TabelaDeDados';
+import { useTabelaDeDados } from '../components/tabela/useTabelaDeDados';
+import { GerenciadorDeColunas } from '../components/tabela/GerenciadorDeColunas';
+import { MenuExportar } from '../components/tabela/MenuExportar';
+import { Button } from '../components/ui/Button';
+import { Badge } from '../components/ui/Badge';
+import { Input, Textarea } from '../components/ui/Input';
+import { Select } from '../components/ui/Select';
+import { Switch } from '../components/ui/Switch';
+import { Label } from '../components/ui/Label';
+import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter } from '../components/ui/Dialog';
+import { DropdownMenu, DropdownMenuItem } from '../components/ui/DropdownMenu';
+import { useToast } from '../components/ui/Toast';
+import { ConfirmarExclusaoDialog } from '../components/dialogos/ConfirmarExclusaoDialog';
+import { CampoDeFormulario } from '../components/formulario/CampoDeFormulario';
+import { useFormulario } from '../components/formulario/useFormulario';
+import { SeletorDeProdutos } from '../components/formulario/SeletorDeProdutos';
+import { BadgeDeTipoDeAcao } from '../components/BadgeDeTipoDeAcao';
+import { TIPOS_ACAO, ROTULO_TIPO_ACAO, normEan } from '../config/acoes';
+import { fmtData, fmtDiaSemana, fmtMoeda, hojeLocal, soData } from '../lib/formatar';
 
-const TIPOS = [
-  { value: 'encarte', label: 'Encarte', color: 'bg-blue-500/10 text-blue-600 border-blue-500/20' },
-  { value: 'oferta_interna', label: 'Oferta Interna', color: 'bg-green-500/10 text-green-600 border-green-500/20' },
-  { value: 'rebaixa', label: 'Rebaixa', color: 'bg-orange-500/10 text-orange-600 border-orange-500/20' },
-];
+const OPCOES_TIPO = [{ value: '', label: 'Todos' }, ...TIPOS_ACAO.map((t) => ({ value: t.value, label: t.label }))];
 
-const tipoInfo = (tipo) => TIPOS.find(t => t.value === tipo) || TIPOS[0];
-const fmt = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+function statusDaAcao(a, hoje) {
+  const ini = soData(a.data_inicio);
+  const fim = soData(a.data_fim);
+  if (!ini || !fim) return 'Sem data';
+  if (hoje < ini) return 'Programada';
+  if (hoje > fim) return 'Encerrada';
+  return 'Ativa';
+}
+const VARIANTE_STATUS = { Ativa: 'sucesso', Programada: 'alerta', Encerrada: 'neutro', 'Sem data': 'neutro' };
 
-function FormModal({ acao, onClose, onSave }) {
-  const isEdit = !!acao?._id;
-  const [form, setForm] = useState({
-    tipo: acao?.tipo || 'encarte',
-    preco_normal: acao?.preco_normal || '',
-    preco_acao: acao?.preco_acao || '',
-    data_inicio: acao?.data_inicio?.slice(0, 10) || '',
-    data_fim: acao?.data_fim?.slice(0, 10) || '',
-    vendor: acao?.vendor || 'ambos',
-    observacao: acao?.observacao || '',
-  });
-  const [saving, setSaving] = useState(false);
-  const [produtos, setProdutos] = useState([]);
-  const [busca, setBusca] = useState('');
-  const [showDropdown, setShowDropdown] = useState(false);
-  // Multi-select: lista de produtos selecionados
-  const [selecionados, setSelecionados] = useState(
-    isEdit ? [{ ean: acao.ean, produto: acao.produto, cod_interno: acao.cod_interno || '' }] : []
+function montarColunas({ hoje, onEditar, onExcluir }) {
+  return [
+    { id: 'tipo', tipo: 'categoria', rotulo: 'Tipo', fixa: true, larguraClasse: 'w-36', papelNoCartao: 'status', valor: (a) => ROTULO_TIPO_ACAO[a.tipo] ?? a.tipo, renderizar: (a) => <BadgeDeTipoDeAcao tipo={a.tipo} /> },
+    {
+      id: 'produto',
+      tipo: 'texto',
+      rotulo: 'Produto',
+      fixa: true,
+      larguraClasse: 'min-w-56',
+      papelNoCartao: 'titulo',
+      valor: (a) => a.produto,
+      renderizar: (a) => (
+        <div className="min-w-0">
+          <p className="font-medium text-neutral-900">{a.produto}</p>
+          <p className="text-xs text-neutral-400">{a.cod_interno ? `Cód. ${a.cod_interno} · ` : ''}EAN {normEan(a.ean)}</p>
+        </div>
+      ),
+    },
+    { id: 'status', tipo: 'categoria', rotulo: 'Status', papelNoCartao: 'etiqueta', valor: (a) => statusDaAcao(a, hoje), renderizar: (a) => <Badge variant={VARIANTE_STATUS[statusDaAcao(a, hoje)]}>{statusDaAcao(a, hoje)}</Badge> },
+    { id: 'preco_acao', tipo: 'numero', rotulo: 'Preço da ação', formato: 'moeda', valor: (a) => (a.preco_acao == null ? null : Number(a.preco_acao)) },
+    { id: 'preco_normal', tipo: 'numero', rotulo: 'Preço normal', formato: 'moeda', padrao: false, valor: (a) => (a.preco_normal == null ? null : Number(a.preco_normal)) },
+    { id: 'data_inicio', tipo: 'data', rotulo: 'Início', valor: (a) => soData(a.data_inicio), renderizar: (a) => <span>{fmtData(a.data_inicio)} <span className="text-neutral-400">({fmtDiaSemana(a.data_inicio)})</span></span> },
+    { id: 'data_fim', tipo: 'data', rotulo: 'Fim', valor: (a) => soData(a.data_fim), renderizar: (a) => <span>{fmtData(a.data_fim)} <span className="text-neutral-400">({fmtDiaSemana(a.data_fim)})</span></span> },
+    { id: 'vendor', tipo: 'categoria', rotulo: 'Bandeira', valor: (a) => ROTULO_BANDEIRA[a.vendor] ?? a.vendor },
+    { id: 'observacao', tipo: 'texto', rotulo: 'Observação', padrao: false, valor: (a) => a.observacao || null },
+    {
+      id: 'acoes',
+      tipo: 'custom',
+      rotulo: 'Ações',
+      ordenavel: false,
+      larguraClasse: 'w-12',
+      alinhamento: 'right',
+      renderizar: (a) => (
+        <DropdownMenu
+          trigger={
+            <Button variant="ghost" size="icon-sm" aria-label={`Ações de ${a.produto}`}>
+              <MoreHorizontal />
+            </Button>
+          }
+        >
+          <DropdownMenuItem onSelect={() => onEditar(a)}>
+            <Pencil /> Editar
+          </DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" onSelect={() => onExcluir(a)}>
+            <Trash2 /> Excluir
+          </DropdownMenuItem>
+        </DropdownMenu>
+      ),
+    },
+  ];
+}
+
+const ORDENACAO_PADRAO = { colunaId: 'data_inicio', direcao: 'desc' };
+
+// ─── Formulário (criar / editar) ─────────────────────────────────────────────
+function validar(v, { editando, selecionados }) {
+  const erros = {};
+  if (!v.tipo) erros.tipo = 'Escolha o tipo da ação.';
+  if (!editando && selecionados.length === 0) erros.produtos = 'Adicione ao menos um produto.';
+  const preco = Number(String(v.preco_acao).replace(',', '.'));
+  if (!v.preco_acao || Number.isNaN(preco) || preco <= 0) erros.preco_acao = 'Informe o preço da ação.';
+  if (v.preco_normal) {
+    const pn = Number(String(v.preco_normal).replace(',', '.'));
+    if (Number.isNaN(pn) || pn < 0) erros.preco_normal = 'Preço normal inválido.';
+  }
+  if (!v.data_inicio) erros.data_inicio = 'Informe a data de início.';
+  if (!v.data_fim) erros.data_fim = 'Informe a data de fim.';
+  if (v.data_inicio && v.data_fim && v.data_fim < v.data_inicio) erros.data_fim = 'A data de fim deve ser igual ou posterior ao início.';
+  return erros;
+}
+
+function FormularioDeAcao({ open, onOpenChange, acao, produtos, onSalvo }) {
+  const editando = Boolean(acao?._id);
+  const { notificar } = useToast();
+  const [selecionados, setSelecionados] = useState([]);
+  const valoresIniciais = useMemo(
+    () => ({
+      tipo: acao?.tipo || 'encarte',
+      preco_normal: acao?.preco_normal ?? '',
+      preco_acao: acao?.preco_acao ?? '',
+      data_inicio: soData(acao?.data_inicio) || '',
+      data_fim: soData(acao?.data_fim) || '',
+      vendor: acao?.vendor || 'ambos',
+      observacao: acao?.observacao || '',
+    }),
+    [acao]
   );
-  const dropdownRef = useRef(null);
+  const form = useFormulario({ valoresIniciais, validar: (v) => validar(v, { editando, selecionados }) });
+  const { resetar } = form;
 
   useEffect(() => {
-    api.get('/produtos').then(res => setProdutos(res.data.data || [])).catch(() => {});
-  }, []);
+    if (!open) return;
+    resetar(valoresIniciais);
+    setSelecionados(editando ? [{ ean: acao.ean, produto: acao.produto, cod_interno: acao.cod_interno || '' }] : []);
+  }, [open, valoresIniciais, editando, acao, resetar]);
 
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setShowDropdown(false);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const filteredProdutos = produtos.filter(p => {
-    // Não mostrar já selecionados
-    if (selecionados.some(s => s.ean === p.ean)) return false;
-    const termo = busca.toLowerCase();
-    return p.produto?.toLowerCase().includes(termo) ||
-      p.ean?.includes(busca) ||
-      p.cod_interno?.toString().includes(busca);
-  }).slice(0, 50);
-
-  const addProduto = (p) => {
-    setSelecionados([...selecionados, { ean: p.ean, produto: p.produto, cod_interno: p.cod_interno || '' }]);
-    setBusca('');
-    setShowDropdown(false);
-  };
-
-  const removeProduto = (ean) => {
-    setSelecionados(selecionados.filter(s => s.ean !== ean));
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (selecionados.length === 0) {
-      alert('Selecione ao menos um produto');
-      return;
-    }
-    setSaving(true);
+  const salvar = async (v) => {
+    const num = (x) => (x === '' || x == null ? null : Number(String(x).replace(',', '.')));
     try {
-      const payload = {
-        ...form,
-        preco_normal: form.preco_normal ? Number(form.preco_normal) : null,
-        preco_acao: Number(form.preco_acao),
-        produtos: selecionados,
-      };
-      if (isEdit) {
-        // Edição: atualiza só o registro individual
+      if (editando) {
         await api.put(`/acoes/${acao._id}`, {
-          ...form,
+          ...v,
+          preco_normal: num(v.preco_normal),
+          preco_acao: num(v.preco_acao),
           ean: selecionados[0].ean,
           produto: selecionados[0].produto,
           cod_interno: selecionados[0].cod_interno,
-          preco_normal: payload.preco_normal,
-          preco_acao: payload.preco_acao,
         });
+        notificar({ tipo: 'sucesso', titulo: 'Ação atualizada' });
       } else {
-        await api.post('/acoes', payload);
+        const r = await api.post('/acoes', { ...v, preco_normal: num(v.preco_normal), preco_acao: num(v.preco_acao), produtos: selecionados });
+        notificar({ tipo: 'sucesso', titulo: 'Ação criada', descricao: `${r.data.metadata?.total ?? selecionados.length} produto(s) cadastrado(s).` });
       }
-      onSave();
+      onSalvo();
     } catch (err) {
-      console.error('Erro ao salvar ação:', err);
-      alert('Erro ao salvar: ' + (err.response?.data?.error || err.message));
-    } finally {
-      setSaving(false);
+      form.setErros({ _geral: err.response?.data?.error || err.message });
     }
   };
 
-  const set = (field) => (e) => setForm({ ...form, [field]: e.target.value });
-
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl border border-slate-200 w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-xl">
-        <div className="flex items-center justify-between p-6 border-b border-slate-200">
-          <h2 className="text-lg font-bold text-slate-900">{acao?._id ? 'Editar' : 'Nova'} Ação Comercial</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-900"><X size={20} /></button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Tipo</label>
-            <div className="flex gap-2">
-              {TIPOS.map(t => (
-                <button type="button" key={t.value} onClick={() => setForm({ ...form, tipo: t.value })}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-all ${form.tipo === t.value ? t.color : 'border-slate-300 text-slate-500 hover:text-slate-900'}`}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogHeader onClose={() => onOpenChange(false)}>
+        <DialogTitle>{editando ? 'Editar ação comercial' : 'Nova ação comercial'}</DialogTitle>
+        <DialogDescription>Encarte, oferta interna ou rebaixa de preço, com período de vigência.</DialogDescription>
+      </DialogHeader>
+      <form onSubmit={form.submeter(salvar)} noValidate className="flex min-h-0 flex-1 flex-col">
+        <DialogBody className="flex flex-col gap-4">
+          <CampoDeFormulario rotulo="Tipo" obrigatorio erro={form.erros.tipo}>
+            <Segmentado rotulo="Tipo" opcoes={TIPOS_ACAO.map((t) => ({ value: t.value, label: t.label }))} valor={form.valores.tipo} onChange={(v) => form.definir('tipo', v)} />
+          </CampoDeFormulario>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="relative col-span-1" ref={dropdownRef}>
-              <label className="block text-sm text-slate-500 mb-1">{isEdit ? 'Produto *' : 'Produtos *'}</label>
-              {/* Produtos selecionados */}
+          <CampoDeFormulario rotulo={editando ? 'Produto' : 'Produtos'} obrigatorio erro={form.erros.produtos}>
+            <div aria-invalid={form.erros.produtos ? true : undefined} className="flex flex-col gap-2">
               {selecionados.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {selecionados.map(s => (
-                    <span key={s.ean} className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-royal/10 text-royal text-xs border border-royal/20">
-                      <span className="max-w-[140px] truncate">{s.produto}</span>
-                      <span className="text-royal/70">#{s.cod_interno || s.ean}</span>
-                      {!(isEdit) && <button type="button" onClick={() => removeProduto(s.ean)} className="ml-0.5 hover:text-red-400"><X size={12} /></button>}
+                <div className="flex flex-wrap gap-1.5">
+                  {selecionados.map((s) => (
+                    <span key={s.ean} className="inline-flex items-center gap-1 rounded-md border border-secondary/20 bg-secondary/5 px-2 py-1 text-xs text-secondary">
+                      <span className="max-w-[180px] truncate">{s.produto}</span>
+                      <span className="text-secondary/60">#{s.cod_interno || normEan(s.ean)}</span>
+                      {!editando && (
+                        <button type="button" onClick={() => setSelecionados((l) => l.filter((x) => x.ean !== s.ean))} aria-label={`Remover ${s.produto}`} className="rounded-xs hover:text-danger">
+                          <X className="size-3" />
+                        </button>
+                      )}
                     </span>
                   ))}
                 </div>
               )}
-              {/* Input de busca (sempre visível em criação, oculto em edição) */}
-              {!isEdit && (
-                <div className="relative">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                  <input value={busca} onChange={(e) => { setBusca(e.target.value); setShowDropdown(true); }}
-                    onFocus={() => setShowDropdown(true)}
-                    placeholder="Buscar por nome ou código..."
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-8 py-2 text-slate-900 text-sm focus:border-royal focus:outline-none" />
-                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                </div>
-              )}
-              {showDropdown && filteredProdutos.length > 0 && (
-                <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                  {filteredProdutos.map(p => (
-                    <button type="button" key={p.ean} onClick={() => addProduto(p)}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-royal/10 transition-colors border-b border-slate-100 last:border-0">
-                      <span className="text-slate-900">{p.produto}</span>
-                      <span className="text-slate-400 ml-2 text-xs">Cód: {p.cod_interno || '—'}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {selecionados.length > 0 && !isEdit && (
-                <p className="text-xs text-royal mt-1">{selecionados.length} produto(s) selecionado(s)</p>
+              {!editando && (
+                <SeletorDeProdutos
+                  produtos={produtos}
+                  selecionados={selecionados.map((s) => s.ean)}
+                  onAdicionar={(p) => setSelecionados((l) => [...l, { ean: p.ean, produto: p.produto, cod_interno: p.cod_interno || '' }])}
+                  onAdicionarVarios={(lista) => setSelecionados((l) => [...l, ...lista.map((p) => ({ ean: p.ean, produto: p.produto, cod_interno: p.cod_interno || '' }))])}
+                />
               )}
             </div>
-            <div>
-              <label className="block text-sm text-slate-500 mb-1">Bandeira</label>
-              <select value={form.vendor} onChange={set('vendor')}
-                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 text-sm focus:border-royal focus:outline-none">
-                <option value="ambos">Todas</option>
-                <option value="valemilk">Valemilk</option>
-                <option value="valefish">Valefish</option>
-              </select>
-            </div>
+          </CampoDeFormulario>
+
+          <div className="grid grid-cols-2 gap-3">
+            <CampoDeFormulario rotulo="Preço normal" htmlFor="acao-preco-normal" erro={form.erros.preco_normal}>
+              <Input id="acao-preco-normal" type="number" step="0.01" min="0" inputMode="decimal" placeholder="0,00" className="bg-neutral-50" {...form.propsDoCampo('preco_normal')} />
+            </CampoDeFormulario>
+            <CampoDeFormulario rotulo="Preço da ação" htmlFor="acao-preco" obrigatorio erro={form.erros.preco_acao}>
+              <Input id="acao-preco" type="number" step="0.01" min="0" inputMode="decimal" placeholder="0,00" className="bg-neutral-50" {...form.propsDoCampo('preco_acao')} />
+            </CampoDeFormulario>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-slate-500 mb-1">Preço Normal</label>
-              <input type="number" step="0.01" value={form.preco_normal} onChange={set('preco_normal')} placeholder="0.00"
-                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 text-sm focus:border-royal focus:outline-none" />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-500 mb-1">Preço da Ação *</label>
-              <input type="number" step="0.01" value={form.preco_acao} onChange={set('preco_acao')} required placeholder="0.00"
-                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 text-sm focus:border-royal focus:outline-none" />
-            </div>
+          <div className="grid grid-cols-2 gap-3">
+            <CampoDeFormulario rotulo="Início" htmlFor="acao-inicio" obrigatorio erro={form.erros.data_inicio}>
+              <Input id="acao-inicio" type="date" className="bg-neutral-50" {...form.propsDoCampo('data_inicio')} />
+            </CampoDeFormulario>
+            <CampoDeFormulario rotulo="Fim" htmlFor="acao-fim" obrigatorio erro={form.erros.data_fim}>
+              <Input id="acao-fim" type="date" min={form.valores.data_inicio || undefined} className="bg-neutral-50" {...form.propsDoCampo('data_fim')} />
+            </CampoDeFormulario>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-slate-500 mb-1">Data Início *</label>
-              <input type="date" value={form.data_inicio} onChange={set('data_inicio')} required
-                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 text-sm focus:border-royal focus:outline-none" />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-500 mb-1">Data Fim *</label>
-              <input type="date" value={form.data_fim} onChange={set('data_fim')} required
-                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 text-sm focus:border-royal focus:outline-none" />
-            </div>
-          </div>
+          <CampoDeFormulario rotulo="Bandeira" htmlFor="acao-vendor">
+            <Select id="acao-vendor" className="bg-neutral-50" {...form.propsDoCampo('vendor')}>
+              {OPCOES_BANDEIRA.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+          </CampoDeFormulario>
 
-          <div>
-            <label className="block text-sm text-slate-500 mb-1">Observação</label>
-            <textarea value={form.observacao} onChange={set('observacao')} rows={2} placeholder="Detalhes adicionais..."
-              className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 text-sm focus:border-royal focus:outline-none resize-none" />
-          </div>
+          <CampoDeFormulario rotulo="Observação" htmlFor="acao-obs">
+            <Textarea id="acao-obs" rows={2} placeholder="Detalhes adicionais..." className="bg-neutral-50" {...form.propsDoCampo('observacao')} />
+          </CampoDeFormulario>
 
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="flex-1 px-4 py-2.5 rounded-lg border border-slate-300 text-slate-500 hover:text-slate-900 text-sm font-medium">
-              Cancelar
-            </button>
-            <button type="submit" disabled={saving}
-              className="flex-1 px-4 py-2.5 rounded-lg bg-royal hover:bg-royal/90 text-white text-sm font-medium disabled:opacity-50">
-              {saving ? 'Salvando...' : (acao?._id ? 'Atualizar' : 'Criar Ação')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+          {form.erros._geral && (
+            <p role="alert" className="rounded-sm border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+              {form.erros._geral}
+            </p>
+          )}
+        </DialogBody>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={form.enviando}>
+            Cancelar
+          </Button>
+          <Button type="submit" variant="secondary" disabled={form.enviando}>
+            {form.enviando && <Loader2 className="animate-spin" aria-hidden />}
+            {editando ? 'Salvar' : 'Criar ação'}
+          </Button>
+        </DialogFooter>
+      </form>
+    </Dialog>
   );
 }
 
+// ─── Página ──────────────────────────────────────────────────────────────────
 export default function Acoes() {
+  useTituloDaPagina('Ações comerciais', 'Encartes, ofertas internas e rebaixas');
+  const { notificar } = useToast();
+  const hoje = hojeLocal();
+
   const [acoes, setAcoes] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editAcao, setEditAcao] = useState(null);
-  const [filtroTipo, setFiltroTipo] = useState('');
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(null);
+  const [produtos, setProdutos] = useState([]);
 
-  const fetchAcoes = async () => {
-    setLoading(true);
+  const [busca, setBusca] = useState('');
+  const [tipo, setTipo] = useState('');
+  const [vendor, setVendor] = useState('ambos');
+  const [somenteAtivas, setSomenteAtivas] = useState(false);
+
+  const [formAberto, setFormAberto] = useState(false);
+  const [emEdicao, setEmEdicao] = useState(null);
+  const [aExcluir, setAExcluir] = useState(null);
+  const [excluindo, setExcluindo] = useState(false);
+
+  useEffect(() => {
+    api.get('/produtos').then((r) => setProdutos(r.data.data || [])).catch(() => {});
+  }, []);
+
+  const carregar = useCallback(async () => {
+    setCarregando(true);
+    setErro(null);
     try {
-      const params = filtroTipo ? `?tipo=${filtroTipo}` : '';
-      const res = await api.get(`/acoes${params}`);
-      setAcoes(res.data.data);
+      const res = await api.get(`/acoes${tipo ? `?tipo=${tipo}` : ''}`);
+      setAcoes(res.data.data || []);
     } catch (err) {
-      console.error('Erro ao carregar ações:', err);
+      setErro(err.response?.data?.error || err.message);
     } finally {
-      setLoading(false);
+      setCarregando(false);
     }
+  }, [tipo]);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  const linhas = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    return acoes.filter((a) => {
+      if (vendor !== 'ambos' && a.vendor !== vendor) return false;
+      if (somenteAtivas && statusDaAcao(a, hoje) !== 'Ativa') return false;
+      if (q && !(a.produto?.toLowerCase().includes(q) || normEan(a.ean).includes(q) || String(a.cod_interno ?? '').includes(q) || a.observacao?.toLowerCase().includes(q))) return false;
+      return true;
+    });
+  }, [acoes, busca, vendor, somenteAtivas, hoje]);
+
+  const colunas = useMemo(
+    () =>
+      montarColunas({
+        hoje,
+        onEditar: (a) => {
+          setEmEdicao(a);
+          setFormAberto(true);
+        },
+        onExcluir: setAExcluir,
+      }),
+    [hoje]
+  );
+  const tabela = useTabelaDeDados({ linhas, colunas, ordenacaoPadrao: ORDENACAO_PADRAO, baseDasOpcoes: acoes, passo: 50 });
+
+  const ativos = filtrosAtivos([
+    tipo && { id: 'tipo', rotulo: `Tipo: ${ROTULO_TIPO_ACAO[tipo]}`, onRemover: () => setTipo('') },
+    vendor !== 'ambos' && { id: 'vendor', rotulo: `Bandeira: ${ROTULO_BANDEIRA[vendor]}`, onRemover: () => setVendor('ambos') },
+    somenteAtivas && { id: 'ativas', rotulo: 'Somente ativas hoje', onRemover: () => setSomenteAtivas(false) },
+  ]);
+  const limparFiltrosDeTela = () => {
+    setTipo('');
+    setVendor('ambos');
+    setSomenteAtivas(false);
+    setBusca('');
   };
 
-  useEffect(() => { fetchAcoes(); }, [filtroTipo]);
-
-  const handleDelete = async (id) => {
-    if (!confirm('Tem certeza que deseja excluir esta ação?')) return;
+  const excluir = async () => {
+    if (!aExcluir) return;
+    setExcluindo(true);
     try {
-      await api.delete(`/acoes/${id}`);
-      fetchAcoes();
+      await api.delete(`/acoes/${aExcluir._id}`);
+      notificar({ tipo: 'sucesso', titulo: 'Ação excluída' });
+      setAExcluir(null);
+      carregar();
     } catch (err) {
-      console.error('Erro ao excluir:', err);
+      notificar({ tipo: 'erro', titulo: 'Não foi possível excluir', descricao: err.response?.data?.error || err.message });
+    } finally {
+      setExcluindo(false);
     }
   };
-
-  const openEdit = (acao) => { setEditAcao(acao); setShowModal(true); };
-  const openNew = () => { setEditAcao(null); setShowModal(true); };
-  const onSave = () => { setShowModal(false); setEditAcao(null); fetchAcoes(); };
-
-  const hoje = new Date().toISOString().slice(0, 10);
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-5 gap-3">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Ações Comerciais</h1>
-          <p className="text-slate-500 text-xs sm:text-sm mt-0.5 hidden sm:block">Cadastre encartes, ofertas internas e rebaixas</p>
-        </div>
-        <button onClick={openNew}
-          className="flex items-center gap-2 px-4 py-2.5 bg-royal hover:bg-royal/90 text-white rounded-xl text-sm font-medium transition-colors shrink-0">
-          <Plus size={18} /> <span className="hidden sm:inline">Nova Ação</span><span className="sm:hidden">Nova</span>
-        </button>
-      </div>
+    <div className="flex flex-col gap-6">
+      <AppHeader
+        actionsSlot={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setEmEdicao(null);
+                setFormAberto(true);
+              }}
+            >
+              <Plus aria-hidden /> Nova ação
+            </Button>
+            <MenuExportar titulo="Ações comerciais" filtros={ativos.map((a) => ({ rotulo: 'Filtro', valor: a.rotulo }))} tabela={tabela} linhasCompletas={acoes} desabilitado={carregando || !acoes.length} />
+            <GerenciadorDeColunas {...tabela.propsDoGerenciador} />
+          </>
+        }
+      />
 
-      {/* Filtros */}
-      <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
-        <button onClick={() => setFiltroTipo('')}
-          className={`shrink-0 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${!filtroTipo ? 'bg-royal/10 text-royal border border-royal/20' : 'text-slate-500 hover:text-slate-900 border border-slate-200'}`}>
-          Todos
-        </button>
-        {TIPOS.map(t => (
-          <button key={t.value} onClick={() => setFiltroTipo(t.value)}
-            className={`shrink-0 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium border transition-all ${filtroTipo === t.value ? t.color : 'border-slate-200 text-slate-500 hover:text-slate-900'}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <PainelDeFiltros telaId="acoes" ativos={ativos} onLimparTudo={limparFiltrosDeTela} slotFixo={<SearchInput value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar produto, EAN ou código..." />}>
+        <CampoDeFiltro rotulo="Tipo de ação">
+          <Segmentado rotulo="Tipo de ação" opcoes={OPCOES_TIPO} valor={tipo} onChange={setTipo} className="h-10 items-center" />
+        </CampoDeFiltro>
+        <CampoDeFiltro rotulo="Bandeira">
+          <Segmentado rotulo="Bandeira" opcoes={OPCOES_BANDEIRA} valor={vendor} onChange={setVendor} className="h-10 items-center" />
+        </CampoDeFiltro>
+        <CampoDeFiltro rotulo="Vigência">
+          <div className="flex h-10 items-center gap-2">
+            <Switch id="acoes-ativas" checked={somenteAtivas} onCheckedChange={setSomenteAtivas} />
+            <Label htmlFor="acoes-ativas" className="text-sm text-neutral-700">
+              Somente ativas hoje
+            </Label>
+          </div>
+        </CampoDeFiltro>
+      </PainelDeFiltros>
 
-      {loading ? <LoadingSpinner /> : (
-        <div className="space-y-3">
-          {acoes.length === 0 ? (
-            <div className="bg-white rounded-xl border border-slate-200 p-12 text-center shadow-sm">
-              <Tag size={48} className="mx-auto text-slate-300 mb-4" />
-              <p className="text-slate-400 text-lg">Nenhuma ação cadastrada</p>
-              <p className="text-slate-300 text-sm mt-1">Clique em "Nova Ação" para começar</p>
-            </div>
-          ) : acoes.map(acao => {
-            const info = tipoInfo(acao.tipo);
-            const ativa = acao.data_inicio?.slice(0, 10) <= hoje && acao.data_fim?.slice(0, 10) >= hoje;
-            return (
-              <div key={acao._id} className="bg-white rounded-xl border border-slate-200 p-4 flex items-start sm:items-center gap-3 shadow-sm">
-                <div className={`px-2.5 py-1 rounded-lg text-xs font-semibold border shrink-0 ${info.color}`}>
-                  {info.label}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-slate-900 font-medium truncate text-sm">{acao.produto}</span>
-                    {ativa && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-500/10 text-green-600 border border-green-500/20">ATIVA</span>}
-                  </div>
-                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-slate-500">
-                    <span>Cód: {acao.cod_interno || acao.ean}</span>
-                    <span>Preço: {fmt(acao.preco_acao)}</span>
-                    <span className="hidden sm:inline">{acao.data_inicio?.slice(0, 10)} → {acao.data_fim?.slice(0, 10)}</span>
-                    <span className="sm:hidden">{acao.data_inicio?.slice(5, 10)} → {acao.data_fim?.slice(5, 10)}</span>
-                    <span className="capitalize">{acao.vendor}</span>
-                  </div>
-                </div>
-                <div className="flex gap-1 shrink-0">
-                  <button onClick={() => openEdit(acao)} className="p-2 rounded-lg text-slate-400 hover:text-royal hover:bg-royal/10 transition-colors">
-                    <Edit2 size={16} />
-                  </button>
-                  <button onClick={() => handleDelete(acao._id)} className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-500/10 transition-colors">
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <TabelaDeDados
+        tabela={tabela}
+        chaveDaLinha={(a) => a._id}
+        carregando={carregando}
+        erro={erro}
+        aoTentarNovamente={carregar}
+        temFiltroDeTela={ativos.length > 0 || Boolean(busca)}
+        onLimparFiltrosDeTela={limparFiltrosDeTela}
+        vazio={{
+          mensagemVazio: 'Nenhuma ação cadastrada ainda',
+          mensagemFiltrada: 'Nenhuma ação corresponde aos filtros',
+          acao: (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setEmEdicao(null);
+                setFormAberto(true);
+              }}
+            >
+              <Plus aria-hidden /> Criar a primeira ação
+            </Button>
+          ),
+        }}
+      />
 
-      {showModal && <FormModal acao={editAcao} onClose={() => { setShowModal(false); setEditAcao(null); }} onSave={onSave} />}
+      <FormularioDeAcao
+        open={formAberto}
+        onOpenChange={setFormAberto}
+        acao={emEdicao}
+        produtos={produtos}
+        onSalvo={() => {
+          setFormAberto(false);
+          setEmEdicao(null);
+          carregar();
+        }}
+      />
+
+      <ConfirmarExclusaoDialog
+        open={Boolean(aExcluir)}
+        onOpenChange={(v) => !v && setAExcluir(null)}
+        alvo={aExcluir ? `a ação "${aExcluir.produto}"` : ''}
+        consequencia={aExcluir ? `A ação de ${ROTULO_TIPO_ACAO[aExcluir.tipo] ?? aExcluir.tipo} a ${fmtMoeda(aExcluir.preco_acao)} (${fmtData(aExcluir.data_inicio)} → ${fmtData(aExcluir.data_fim)}) some das análises de eficácia e dos gráficos.` : ''}
+        onConfirmar={excluir}
+        confirmando={excluindo}
+      />
     </div>
   );
 }
